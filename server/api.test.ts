@@ -1,0 +1,256 @@
+import { execFileSync } from 'node:child_process';
+import { readFile, writeFile, rm } from 'node:fs/promises';
+import net from 'node:net';
+import type { Server } from 'node:http';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createApp } from './app.js';
+import { put, task, tmpDir } from './helpers.js';
+import type { Session } from './session.js';
+
+let server: Server;
+let session: Session;
+let base: string;
+let root: string;
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const s = net.createServer().listen(0, '127.0.0.1', () => {
+      const { port } = s.address() as net.AddressInfo;
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+const call = (method: string, url: string, body?: unknown, headers: Record<string, string> = {}) =>
+  fetch(base + url, {
+    method,
+    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+const open = async () => (await call('POST', '/api/repo', { path: root })).json();
+const read = (rel: string) => readFile(path.join(root, rel), 'utf8');
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+beforeEach(async () => {
+  process.env.AGENTIC_BOARD_HOME = await tmpDir('home-');
+  root = await tmpDir('repo-');
+  await put(root, 'specs/tasks/a.md', task('T-1', 'Backlog'));
+  await put(root, 'specs/tasks/b.md', task('T-2', 'Backlog', 'Segunda', 'assignee: ana\n'));
+  await put(root, 'specs/tasks/c.md', task('T-3', 'Em execução'));
+  const port = await freePort();
+  const created = createApp({ port, pickFolder: async () => root });
+  session = created.session;
+  server = created.app.listen(port, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${port}`;
+});
+
+afterEach(async () => {
+  await session.close();
+  server.closeAllConnections();
+  await new Promise((r) => server.close(r));
+});
+
+describe('abrir repositório', () => {
+  it('mostra 3 tasks e 2 colunas distribuídas', async () => {
+    const board = await open();
+    expect(board.tasks).toHaveLength(3);
+    expect(board.columns.map((c: { name: string; count: number }) => [c.name, c.count])).toEqual([['Backlog', 2], ['Em execução', 1]]);
+  });
+
+  it('erros claros para caminho inválido', async () => {
+    const missing = await call('POST', '/api/repo', { path: path.join(root, 'nao-existe') });
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error).toBe('Esse caminho não existe');
+    const file = await call('POST', '/api/repo', { path: path.join(root, 'specs/tasks/a.md') });
+    expect((await file.json()).error).toBe('Esse caminho não é uma pasta');
+    const rel = await call('POST', '/api/repo', { path: 'relativo' });
+    expect(rel.status).toBe(400);
+  });
+
+  it('repo sem tasks abre vazio e lembra nos recentes', async () => {
+    const empty = await tmpDir('vazio-');
+    const res = await call('POST', '/api/repo', { path: empty });
+    expect(res.status).toBe(200);
+    expect((await res.json()).tasks).toEqual([]);
+    const recent = await (await call('GET', '/api/recent')).json();
+    expect(recent[0].path).toContain('vazio-');
+  });
+
+  it('pick-folder devolve o caminho escolhido; 501 fora do macOS', async () => {
+    expect(await (await call('POST', '/api/pick-folder')).json()).toEqual({ path: root });
+    const port = await freePort();
+    const other = createApp({ port, platform: 'linux' });
+    const s = other.app.listen(port, '127.0.0.1');
+    const res = await fetch(`http://127.0.0.1:${port}/api/pick-folder`, { method: 'POST' });
+    expect(res.status).toBe(501);
+    await other.session.close();
+    s.close();
+  });
+});
+
+describe('segurança', () => {
+  it('rejeita Origin externo e Host estranho', async () => {
+    const evil = await call('POST', '/api/repo', { path: root }, { Origin: 'https://evil.example' });
+    expect(evil.status).toBe(403);
+    expect(session.isOpen()).toBe(false);
+    const ok = await call('GET', '/api/recent', undefined, { Origin: base });
+    expect(ok.status).toBe(200);
+  });
+});
+
+describe('mover task', () => {
+  it('troca só a linha status do arquivo', async () => {
+    await open();
+    const before = await read('specs/tasks/b.md');
+    const res = await call('PATCH', '/api/tasks/T-2/status', { status: 'em execucao' });
+    expect(res.status).toBe(200);
+    const after = await read('specs/tasks/b.md');
+    expect(after).toBe(before.replace('status: Backlog', 'status: Em execução'));
+    const state = await res.json();
+    expect(state.columns.map((c: { count: number }) => c.count)).toEqual([1, 2]);
+  });
+
+  it('coluna inexistente e task inexistente', async () => {
+    await open();
+    expect((await call('PATCH', '/api/tasks/T-1/status', { status: 'Nada' })).status).toBe(400);
+    expect((await call('PATCH', '/api/tasks/X-9/status', { status: 'Backlog' })).status).toBe(404);
+  });
+
+  it('erro de reescrita não toca no arquivo', async () => {
+    await put(root, 'specs/tasks/d.md', '---\nid: T-4\ntitle: D\nstatus: |\n  Backlog\n---\n');
+    await open();
+    const before = await read('specs/tasks/d.md');
+    expect((await call('PATCH', '/api/tasks/T-4/status', { status: 'Em execução' })).status).toBeGreaterThanOrEqual(400);
+    expect(await read('specs/tasks/d.md')).toBe(before);
+  });
+});
+
+describe('colunas', () => {
+  it('cria coluna vazia e ela persiste ao reabrir o repo', async () => {
+    await open();
+    expect((await call('POST', '/api/columns', { name: 'Concluído' })).status).toBe(201);
+    expect(JSON.parse(await read('specs/.board.json'))).toEqual({ version: 1, columns: ['Backlog', 'Em execução', 'Concluído'] });
+    await call('DELETE', '/api/repo');
+    const again = await open();
+    expect(again.columns.map((c: { name: string }) => c.name)).toContain('Concluído');
+  });
+
+  it('rejeita nome vazio e duplicado (sem acento/maiúscula)', async () => {
+    await open();
+    expect((await call('POST', '/api/columns', { name: '  ' })).status).toBe(400);
+    const dup = await call('POST', '/api/columns', { name: 'EM EXECUCAO' });
+    expect(dup.status).toBe(409);
+    expect((await dup.json()).error).toBe('Essa coluna já existe');
+  });
+
+  it('renomear coluna com 2 tasks altera exatamente 2 arquivos', async () => {
+    await open();
+    const untouched = await read('specs/tasks/c.md');
+    const res = await call('PATCH', '/api/columns/backlog', { name: 'A fazer' });
+    const out = await res.json();
+    expect(out.changed.sort()).toEqual(['specs/tasks/a.md', 'specs/tasks/b.md']);
+    expect(out.failed).toEqual([]);
+    expect(await read('specs/tasks/a.md')).toContain('status: A fazer');
+    expect(await read('specs/tasks/c.md')).toBe(untouched);
+    expect(out.state.columns[0]).toMatchObject({ name: 'A fazer', count: 2 });
+  });
+
+  it('renomear para nome de outra coluna é bloqueado', async () => {
+    await open();
+    expect((await call('PATCH', '/api/columns/backlog', { name: 'em execucao' })).status).toBe(409);
+  });
+
+  it('exclui só coluna vazia', async () => {
+    await open();
+    expect((await call('DELETE', '/api/columns/backlog')).status).toBe(409);
+    await call('POST', '/api/columns', { name: 'Vazia' });
+    const res = await call('DELETE', '/api/columns/vazia');
+    expect(res.status).toBe(200);
+    expect((await res.json()).columns.map((c: { key: string }) => c.key)).not.toContain('vazia');
+  });
+
+  it('.board.json corrompido: avisa e não sobrescreve até uma ação do usuário', async () => {
+    await put(root, 'specs/.board.json', '{ quebrado');
+    const board = await open();
+    expect(board.configError).toBeTruthy();
+    expect(board.columns).toHaveLength(2);
+    expect(await read('specs/.board.json')).toBe('{ quebrado');
+  });
+});
+
+describe('ignorados', () => {
+  it('frontmatter sem status não vira card e aparece no aviso', async () => {
+    await put(root, 'specs/tasks/rascunho.md', '---\nid: T-9\ntitle: Rascunho\n---\n');
+    const board = await open();
+    expect(board.tasks.map((t: { id: string }) => t.id)).not.toContain('T-9');
+    expect(board.ignored).toEqual([{ file: 'specs/tasks/rascunho.md', reason: 'campo obrigatório ausente: status' }]);
+  });
+});
+
+describe('tempo real', () => {
+  it('edição externa do status chega em até ~1 s e a gravação própria não gera evento duplicado', async () => {
+    await open();
+    const events: string[] = [];
+    const unsub = session.subscribe((e) => events.push(e.type));
+
+    // eco da própria gravação: o estado já foi publicado pela API, o watcher não deve emitir de novo
+    await call('PATCH', '/api/tasks/T-1/status', { status: 'Em execução' });
+    const afterOwn = events.length;
+    await wait(600);
+    expect(events.length).toBe(afterOwn);
+
+    const t0 = Date.now();
+    await writeFile(path.join(root, 'specs/tasks/c.md'), task('T-3', 'Backlog'));
+    while (Date.now() - t0 < 1500) {
+      if (session.current().tasks.find((t) => t.id === 'T-3')?.column === 'backlog') break;
+      await wait(50);
+    }
+    expect(session.current().tasks.find((t) => t.id === 'T-3')?.column).toBe('backlog');
+    expect(Date.now() - t0).toBeLessThan(1000);
+    unsub();
+  });
+
+  it('SSE entrega board-changed', async () => {
+    await open();
+    const res = await fetch(`${base}/api/events`);
+    const reader = res.body!.getReader();
+    await writeFile(path.join(root, 'specs/tasks/novo.md'), task('T-8', 'Backlog'));
+    let text = '';
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && !text.includes('T-8')) {
+      const { value } = await reader.read();
+      text += new TextDecoder().decode(value);
+    }
+    await reader.cancel();
+    expect(text).toContain('event: board-changed');
+    expect(text).toContain('T-8');
+  });
+
+  it('repo removido vira indisponível', async () => {
+    const tmp = await tmpDir('efemero-');
+    await put(tmp, 'specs/tasks/a.md', task('T-1', 'A'));
+    await call('POST', '/api/repo', { path: tmp });
+    const events: string[] = [];
+    session.subscribe((e) => events.push(e.type));
+    await rm(tmp, { recursive: true, force: true });
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && !events.includes('repo-unavailable')) await wait(100);
+    expect(events).toContain('repo-unavailable');
+  });
+});
+
+describe('git diff', () => {
+  it('mover um card altera exatamente uma linha no git diff', async () => {
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    execFileSync('git', ['add', '.'], { cwd: root });
+    execFileSync('git', ['-c', 'user.email=a@b', '-c', 'user.name=t', 'commit', '-qm', 'x'], { cwd: root });
+    await open();
+    await call('PATCH', '/api/tasks/T-1/status', { status: 'Em execução' });
+    const diff = execFileSync('git', ['diff', '--unified=0'], { cwd: root, encoding: 'utf8' });
+    const changed = diff.split('\n').filter((l) => /^[-+](?![-+])/.test(l));
+    expect(changed).toEqual(['-status: Backlog', '+status: Em execução']);
+  });
+});
