@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Board — demo visual</title>
+<style>
+  :root {
+    --bg: #e4e9f0; --surface: #d3dbe7; --ink: #14233a; --muted: #5a6b84; --line: #b9c4d6;
+    --accent: #1e3a8a; --note: #f4f7fb; --note-line: #9fb1cc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1726; --surface: #16233a; --ink: #e3e9f3; --muted: #8fa0ba; --line: #263a5a;
+            --accent: #5b82d6; --note: #22385c; --note-line: #3c5a8a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; }
+  .repo { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .count { color: var(--muted); }
+  .spacer { flex: 1; }
+  button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .warn { margin: 12px 20px 0; padding: 8px 12px; border: 1px dashed var(--note-line); border-radius: 8px; color: var(--muted); font-size: 12px; }
+  .board { flex: 1; display: flex; gap: 14px; padding: 16px 20px; overflow-x: auto; align-items: flex-start; }
+  .col { flex: 0 0 260px; background: var(--surface); border-radius: 12px; padding: 10px; min-height: 140px; border: 2px solid transparent; }
+  .col.over { border-color: var(--accent); }
+  .col-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 10px; font-weight: 600; }
+  .col-head .n { color: var(--muted); font-weight: 400; }
+  .col-head .tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; }
+  .col:hover .tools { opacity: 1; }
+  .tools button { padding: 0 6px; border: 0; background: none; color: var(--muted); }
+  .note { background: var(--note); border: 1px solid var(--note-line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 12px 12px; margin-bottom: 10px; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,.12); color: var(--ink); }
+  .note.drag { opacity: .4; }
+  .note .id { font: 11px ui-monospace, monospace; color: var(--muted); display: block; margin-bottom: 4px; }
+  .note .t { font-weight: 500; }
+  .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
+  .add { flex: 0 0 200px; }
+  .add input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px dashed var(--line); background: transparent; color: var(--ink); font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agentic Board</h1>
+  <span class="repo">~/projetos/meu-repo</span>
+  <span class="count" id="count"></span>
+  <span class="spacer"></span>
+  <button>Trocar repositório…</button>
+</header>
+<div class="warn">1 arquivo ignorado: <code>specs/tasks/rascunho.md</code> — header sem <code>status</code></div>
+<main class="board" id="board"></main>
+
+<script>
+const cols = ["Backlog", "Em execução", "Revisão", "Concluído"];
+const tasks = [
+  { id: "T-001", title: "Definir formato do header das tasks", status: "Backlog" },
+  { id: "T-002", title: "Servidor Node com file watcher", status: "Backlog" },
+  { id: "T-003", title: "Seletor de pasta via Finder", status: "Em execução" },
+  { id: "T-004", title: "Drag and drop reescreve o status no .md", status: "Em execução" },
+  { id: "T-005", title: "Aviso de arquivos ignorados", status: "Concluído" },
+];
+let dragId = null;
+const board = document.getElementById("board");
+
+function render() {
+  board.innerHTML = "";
+  cols.forEach(name => {
+    const items = tasks.filter(t => t.status === name);
+    const col = document.createElement("section");
+    col.className = "col";
+    col.innerHTML = `<div class="col-head">${name}<span class="n">${items.length}</span>
+      <span class="tools"><button title="Renomear">✎</button><button title="Excluir (só se vazia)">✕</button></span></div>`;
+    items.forEach(t => {
+      const n = document.createElement("div");
+      n.className = "note"; n.draggable = true;
+      n.innerHTML = `<span class="id">${t.id}</span><span class="t">${t.title}</span>`;
+      n.ondragstart = () => { dragId = t.id; n.classList.add("drag"); };
+      n.ondragend = () => n.classList.remove("drag");
+      col.appendChild(n);
+    });
+    if (!items.length) col.insertAdjacentHTML("beforeend", `<div class="empty">Nenhuma task</div>`);
+    col.ondragover = e => { e.preventDefault(); col.classList.add("over"); };
+    col.ondragleave = () => col.classList.remove("over");
+    col.ondrop = () => { tasks.find(t => t.id === dragId).status = name; render(); };
+    board.appendChild(col);
+  });
+  const add = document.createElement("div");
+  add.className = "add";
+  add.innerHTML = `<input placeholder="+ Nova coluna (Enter)">`;
+  add.firstChild.onkeydown = e => {
+    if (e.key === "Enter" && e.target.value.trim()) { cols.push(e.target.value.trim()); render(); }
+  };
+  board.appendChild(add);
+  document.getElementById("count").textContent = `${tasks.length} tasks · ${cols.length} colunas`;
+}
+render();
+</script>
+</body>
+</html>
