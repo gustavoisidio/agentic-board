@@ -11,6 +11,8 @@ export interface AppOptions {
   port: number;
   /** Origens extras aceitas (ex.: o Vite em desenvolvimento). */
   extraOrigins?: string[];
+  /** Hostnames/IPs extras aceitos no Host (acesso pela rede local, opt-in). */
+  extraHosts?: string[];
   platform?: NodeJS.Platform;
   /** Substitui o seletor de pasta (testes). */
   pickFolder?: () => Promise<string | null>;
@@ -34,8 +36,9 @@ function osascriptPick(): Promise<string | null> {
 export function createApp(options: AppOptions) {
   const session = new Session();
   const platform = options.platform ?? process.platform;
-  const hosts = new Set([`127.0.0.1:${options.port}`, `localhost:${options.port}`]);
-  const origins = new Set([`http://127.0.0.1:${options.port}`, `http://localhost:${options.port}`, ...(options.extraOrigins ?? [])]);
+  const names = ['127.0.0.1', 'localhost', ...(options.extraHosts ?? [])];
+  const hosts = new Set(names.map((n) => `${n}:${options.port}`));
+  const origins = new Set([...names.map((n) => `http://${n}:${options.port}`), ...(options.extraOrigins ?? [])]);
 
   const app = express();
   app.disable('x-powered-by');
@@ -83,7 +86,7 @@ export function createApp(options: AppOptions) {
   }));
 
   api.delete('/repo', wrap(async (_req, res) => {
-    await session.close();
+    await session.closeAndNotify();
     res.status(204).end();
   }));
 

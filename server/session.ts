@@ -14,7 +14,7 @@ export class HttpError extends Error {
   }
 }
 
-export type SessionEvent = { type: 'board-changed'; state: BoardState } | { type: 'repo-unavailable' };
+export type SessionEvent = { type: 'board-changed'; state: BoardState } | { type: 'repo-unavailable' } | { type: 'repo-closed' };
 type Listener = (event: SessionEvent) => void;
 
 const DEBOUNCE_MS = 150;
@@ -70,6 +70,8 @@ export class Session {
     this.unavailable = false;
     this.state = await this.compute();
     this.startWatching();
+    // quem já está com o board aberto (outra aba ou aparelho) precisa saber que o repositório mudou
+    this.emit({ type: 'board-changed', state: this.state });
     return this.state;
   }
 
@@ -82,6 +84,13 @@ export class Session {
     this.state = null;
     this.unavailable = false;
     if (w) await w.close();
+  }
+
+  /** Fecha o repositório avisando os clientes conectados (a tela deles volta para a inicial). */
+  async closeAndNotify(): Promise<void> {
+    const wasOpen = this.state !== null;
+    await this.close();
+    if (wasOpen) this.emit({ type: 'repo-closed' });
   }
 
   private async compute(): Promise<BoardState> {

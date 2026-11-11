@@ -27,9 +27,24 @@ export function useBoard(notify: (message: string) => void) {
     const source = new EventSource('/api/events');
     source.addEventListener('board-changed', (e) => apply(JSON.parse((e as MessageEvent<string>).data) as BoardState));
     source.addEventListener('repo-unavailable', () => setUnavailable(true));
+    source.addEventListener('repo-closed', () => {
+      setBoard(null);
+      setMoves({});
+      setPhase('home');
+    });
     // ao reconectar (servidor reiniciado, aba voltou), ressincroniza
     source.onopen = () => void api.board().then(apply).catch(() => undefined);
-    return () => source.close();
+    // aba que volta ao primeiro plano (ou o aparelho que acordou) ressincroniza com o disco
+    const resync = () => {
+      if (!document.hidden) void api.board().then(apply).catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      source.close();
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
   }, [phase, apply]);
 
   async function open(path: string) {

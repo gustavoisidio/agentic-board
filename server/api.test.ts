@@ -229,6 +229,19 @@ describe('tempo real', () => {
     expect(text).toContain('T-8');
   });
 
+  it('abrir outro repositório avisa quem já está conectado', async () => {
+    await open();
+    const other = await tmpDir('outro-');
+    await put(other, 'specs/tasks/z.md', task('Z-1', 'Backlog'));
+    const events: { type: string; state?: { tasks: { id: string }[] } }[] = [];
+    session.subscribe((e) => events.push(e as never));
+    await call('POST', '/api/repo', { path: other });
+    const changed = events.find((e) => e.type === 'board-changed');
+    expect(changed?.state?.tasks.map((t) => t.id)).toEqual(['Z-1']);
+    await call('DELETE', '/api/repo');
+    expect(events.map((e) => e.type)).toContain('repo-closed');
+  });
+
   it('repo removido vira indisponível', async () => {
     const tmp = await tmpDir('efemero-');
     await put(tmp, 'specs/tasks/a.md', task('T-1', 'A'));
