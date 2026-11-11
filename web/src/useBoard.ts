@@ -1,0 +1,72 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError, type BoardState } from './api';
+
+export type Phase = 'loading' | 'home' | 'board';
+
+/** Estado do board: carga inicial, SSE em tempo real e movimentação otimista. */
+export function useBoard(notify: (message: string) => void) {
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [board, setBoard] = useState<BoardState | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [moves, setMoves] = useState<Record<string, string>>({}); // id -> chave da coluna (otimista)
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+
+  const apply = useCallback((state: BoardState) => {
+    setBoard(state);
+    setUnavailable(false);
+    setPhase('board');
+  }, []);
+
+  useEffect(() => {
+    api.board().then(apply).catch(() => setPhase('home'));
+  }, [apply]);
+
+  useEffect(() => {
+    if (phase !== 'board') return;
+    const source = new EventSource('/api/events');
+    source.addEventListener('board-changed', (e) => apply(JSON.parse((e as MessageEvent<string>).data) as BoardState));
+    source.addEventListener('repo-unavailable', () => setUnavailable(true));
+    // ao reconectar (servidor reiniciado, aba voltou), ressincroniza
+    source.onopen = () => void api.board().then(apply).catch(() => undefined);
+    return () => source.close();
+  }, [phase, apply]);
+
+  async function open(path: string) {
+    apply(await api.openRepo(path));
+  }
+
+  async function leave() {
+    await api.closeRepo().catch(() => undefined);
+    setBoard(null);
+    setMoves({});
+    setUnavailable(false);
+    setPhase('home');
+  }
+
+  async function move(id: string, columnKey: string, columnName: string) {
+    setMoves((m) => ({ ...m, [id]: columnKey }));
+    try {
+      apply(await api.moveTask(id, columnName));
+    } catch (error) {
+      notifyRef.current(`Não foi possível mover ${id}: ${error instanceof ApiError ? error.message : 'erro desconhecido'}`);
+    } finally {
+      setMoves((m) => {
+        const { [id]: _done, ...rest } = m;
+        return rest;
+      });
+    }
+  }
+
+  // tasks e contagens já com os movimentos otimistas aplicados
+  const view = board && {
+    ...board,
+    tasks: board.tasks.map((t) => (moves[t.id] ? { ...t, column: moves[t.id]! } : t)),
+    columns: board.columns.map((c) => ({
+      ...c,
+      count: board.tasks.reduce((n, t) => n + ((moves[t.id] ?? t.column) === c.key ? 1 : 0), 0),
+    })),
+  };
+
+  return { phase, board: view, unavailable, open, leave, move, apply };
+}
