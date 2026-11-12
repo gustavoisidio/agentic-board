@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { buildBoard, readConfig, writeConfig, type BoardState } from './board.js';
-import { rewriteStatus, RewriteError } from './frontmatter.js';
+import { readTaskDetail, rewriteStatus, RewriteError } from './frontmatter.js';
 import { statusKey } from './normalize.js';
 import { readQueue, writeQueue, type Entered } from './queue.js';
 import { assertInsideRepo, inTaskDir, isSkippedDir } from './paths.js';
@@ -202,6 +202,25 @@ export class Session {
     await atomicWrite(real, rewriteStatus(content, status));
   }
 
+  /** Conteúdo da task para o modal: lê só o .md dessa task, dentro do repo aberto e das pastas specs/tasks. */
+  async taskDetail(id: string) {
+    const task = this.current().tasks.find((t) => t.id === id);
+    if (!task) throw new HttpError(404, 'Task não encontrada');
+    let content: string;
+    try {
+      const real = await assertInsideRepo(this.realRoot, path.join(this.realRoot, task.file));
+      if (!inTaskDir(path.relative(this.realRoot, real)) || !real.toLowerCase().endsWith('.md')) {
+        throw new HttpError(403, 'Arquivo fora das pastas specs/tasks');
+      }
+      content = await fs.readFile(real, 'utf8');
+    } catch (error) {
+      throw toHttp(error);
+    }
+    const detail = readTaskDetail(content);
+    if (!detail) throw new HttpError(422, 'Frontmatter da task não encontrado');
+    return { ...task, ...detail };
+  }
+
   async moveTask(id: string, status: string): Promise<BoardState> {
     const state = this.current();
     const task = state.tasks.find((t) => t.id === id);
@@ -270,6 +289,7 @@ export class Session {
 
 function toHttp(error: unknown): HttpError {
   if (error instanceof HttpError) return error;
+  if ((error as Error).message === 'caminho fora do repositório') return new HttpError(403, 'Arquivo fora do repositório');
   if (error instanceof RewriteError) return new HttpError(422, error.message);
   const code = (error as NodeJS.ErrnoException).code;
   if (code === 'EACCES' || code === 'EPERM') return new HttpError(500, 'Sem permissão para gravar o arquivo');

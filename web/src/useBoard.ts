@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type BoardState } from './api';
+import { compareQueue } from './queue';
 
 export type Phase = 'loading' | 'home' | 'board';
 
@@ -8,7 +9,7 @@ export function useBoard(notify: (message: string) => void) {
   const [phase, setPhase] = useState<Phase>('loading');
   const [board, setBoard] = useState<BoardState | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const [moves, setMoves] = useState<Record<string, string>>({}); // id -> chave da coluna (otimista)
+  const [moves, setMoves] = useState<Record<string, { column: string; at: string }>>({}); // otimista: coluna e instante de entrada
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
 
@@ -60,7 +61,7 @@ export function useBoard(notify: (message: string) => void) {
   }
 
   async function move(id: string, columnKey: string, columnName: string) {
-    setMoves((m) => ({ ...m, [id]: columnKey }));
+    setMoves((m) => ({ ...m, [id]: { column: columnKey, at: new Date().toISOString() } }));
     try {
       apply(await api.moveTask(id, columnName));
     } catch (error) {
@@ -74,14 +75,17 @@ export function useBoard(notify: (message: string) => void) {
   }
 
   // tasks e contagens já com os movimentos otimistas aplicados
-  const view = board && {
-    ...board,
-    tasks: board.tasks.map((t) => (moves[t.id] ? { ...t, column: moves[t.id]! } : t)),
-    columns: board.columns.map((c) => ({
-      ...c,
-      count: board.tasks.reduce((n, t) => n + ((moves[t.id] ?? t.column) === c.key ? 1 : 0), 0),
-    })),
-  };
+  // movimentos otimistas aplicados; o card movido entra no fim da fila da coluna de destino
+  const view = board && (() => {
+    const tasks = board.tasks
+      .map((t) => (moves[t.id] ? { ...t, column: moves[t.id]!.column, enteredAt: moves[t.id]!.at } : t))
+      .sort(compareQueue);
+    return {
+      ...board,
+      tasks,
+      columns: board.columns.map((c) => ({ ...c, count: tasks.reduce((n, t) => n + (t.column === c.key ? 1 : 0), 0) })),
+    };
+  })();
 
   return { phase, board: view, unavailable, open, leave, move, apply };
 }

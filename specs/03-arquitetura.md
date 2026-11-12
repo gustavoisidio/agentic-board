@@ -25,6 +25,7 @@ agentic-board/
 | `GET /recent` | Repositórios recentes |
 | `POST /repo` `{ path }` | Valida e abre o repo; adiciona aos recentes; inicia o watcher; responde o estado do board |
 | `GET /board` | Estado atual: `{ repo, tasks[], columns[], ignored[] }` |
+| `GET /tasks/:id` | Conteúdo da task para o modal: `{ ...task, body, extra }` |
 | `PATCH /tasks/:id/status` `{ status }` | Reescreve o status no `.md` |
 | `POST /columns` `{ name }` | Cria coluna |
 | `PATCH /columns/:key` `{ name }` | Renomeia (reescreve status das tasks) |

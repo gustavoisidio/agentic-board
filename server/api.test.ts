@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile, rm, utimes, readdir } from 'node:fs/promises';
+import { readFile, writeFile, rm, utimes, readdir, symlink } from 'node:fs/promises';
 import net from 'node:net';
 import type { Server } from 'node:http';
 import path from 'node:path';
@@ -320,6 +320,48 @@ describe('fila por coluna (T-001)', () => {
     const again = await open();
     expect(again.tasks).toHaveLength(3);
     expect(again.tasks.every((x: { estimated?: boolean }) => x.estimated)).toBe(true);
+  });
+});
+
+describe('conteúdo da task (modal)', () => {
+  it('devolve o corpo, os campos extras e o status', async () => {
+    await put(root, 'specs/tasks/d.md', '---\nid: T-4\ntitle: Detalhe\nstatus: Backlog\npriority: alta\n---\n\n# Título\n\ncorpo **forte**\n');
+    await open();
+    const res = await call('GET', '/api/tasks/T-4');
+    expect(res.status).toBe(200);
+    const detail = await res.json();
+    expect(detail).toMatchObject({ id: 'T-4', title: 'Detalhe', status: 'Backlog', extra: { priority: 'alta' } });
+    expect(detail.body).toBe('# Título\n\ncorpo **forte**\n');
+  });
+
+  it('id inexistente ou com path traversal não lê nada fora do repo', async () => {
+    await open();
+    expect((await call('GET', '/api/tasks/nao-existe')).status).toBe(404);
+    expect((await call('GET', `/api/tasks/${encodeURIComponent('../../../../etc/passwd')}`)).status).toBe(404);
+    expect((await call('GET', `/api/tasks/${encodeURIComponent('specs/tasks/a.md')}`)).status).toBe(404);
+  });
+
+  it('arquivo trocado por symlink para fora do repo depois da leitura é recusado', async () => {
+    await open();
+    const outside = await tmpDir('fora-');
+    await put(outside, 'segredo.md', '---\nid: T-1\ntitle: x\nstatus: y\n---\nsegredo\n');
+    await rm(path.join(root, 'specs/tasks/a.md'));
+    await symlink(path.join(outside, 'segredo.md'), path.join(root, 'specs/tasks/a.md'));
+    const res = await call('GET', '/api/tasks/T-1');
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).not.toContain('segredo');
+  });
+
+  it('editar só o corpo por fora gera board-changed (o modal aberto atualiza)', async () => {
+    await open();
+    const events: string[] = [];
+    session.subscribe((e) => events.push(e.type));
+    await wait(1100); // garante mtime diferente
+    await writeFile(path.join(root, 'specs/tasks/a.md'), task('T-1', 'Backlog').replace('# T-1', '# T-1\n\nnovo texto'));
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && !events.includes('board-changed')) await wait(50);
+    expect(events).toContain('board-changed');
+    expect((await (await call('GET', '/api/tasks/T-1')).json()).body).toContain('novo texto');
   });
 });
 

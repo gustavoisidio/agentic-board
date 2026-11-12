@@ -1,5 +1,6 @@
 export interface Column { key: string; name: string; count: number }
-export interface Task { id: string; title: string; status: string; file: string; column: string }
+export interface Task { id: string; title: string; status: string; file: string; column: string; enteredAt: string | null; estimated?: true; rev?: string }
+export interface TaskDetail extends Task { body: string; extra: Record<string, unknown> }
 export interface Ignored { file: string; reason: string }
 export interface BoardState {
   repo: { path: string; name: string };
@@ -42,6 +43,7 @@ export const api = {
   openRepo: (path: string) => request<BoardState>('POST', '/repo', { path }),
   closeRepo: () => request<void>('DELETE', '/repo'),
   board: () => request<BoardState>('GET', '/board'),
+  task: (id: string) => request<TaskDetail>('GET', `/tasks/${encodeURIComponent(id)}`),
   moveTask: (id: string, status: string) => request<BoardState>('PATCH', `/tasks/${encodeURIComponent(id)}/status`, { status }),
   createColumn: (name: string) => request<BoardState>('POST', '/columns', { name }),
   renameColumn: (key: string, name: string) => request<RenameResult>('PATCH', `/columns/${encodeURIComponent(key)}`, { name }),

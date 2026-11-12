@@ -80,11 +80,12 @@ Todas sob `/api`, JSON, só em `127.0.0.1` (ou no IP da rede se o servidor subiu
 | `POST /repo` `{ path }` | Abre o repositório (caminho absoluto) e devolve o estado |
 | `DELETE /repo` | Fecha o repositório |
 | `GET /board` | `{ repo, tasks[], columns[], ignored[] }` |
+| `GET /tasks/:id` | Conteúdo da task: `{ ...task, body, extra }` (o que o modal mostra) |
 | `PATCH /tasks/:id/status` `{ status }` | Move a task |
 | `POST /columns` `{ name }` · `PATCH /columns/:key` · `DELETE /columns/:key` | Colunas |
 | `GET /events` | SSE: `board-changed`, `repo-unavailable`, `repo-closed` |
 
-`tasks[]`: `{ id, title, status, file, column }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`.
+`tasks[]`: `{ id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`.
 
 ## Ordem dos cards
 

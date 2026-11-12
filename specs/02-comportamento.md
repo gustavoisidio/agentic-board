@@ -61,3 +61,15 @@ Criado sob demanda (ao criar/renomear/reordenar colunas). Se estiver corrompido,
 ## 9. Estados e erros
 
 Carregando (skeleton leve), vazio, erro de leitura por arquivo (vai para o aviso de ignorados), erro de gravação (toast), repo indisponível (banner). Textos em português.
+
+## 10. Modal da task
+
+- Abre ao clicar no post-it (ou Enter/Espaço com o card focado). Arrastar não abre: o clique que termina um arrasto é ignorado.
+- Cabeçalho: `id`, título e status atual. Corpo: markdown renderizado (títulos, listas, código, tabelas, links). A saída é sanitizada: sem HTML cru perigoso (script, handlers, estilos, iframes, imagens, formulários) e só links `http(s)`, `mailto` e âncoras; links abrem em outra aba com `rel="noopener noreferrer"`. Campos extras do frontmatter (ex.: `priority`) numa área discreta no fim.
+- Somente leitura: o corpo não é editado pelo board.
+- Troca de status: seletor com as colunas existentes; escolher outra move a task pela mesma API (`PATCH /api/tasks/:id/status`) e pela mesma regra da fila (grava o instante de entrada na nova coluna). Mesma coluna não faz nada. Erro mostra toast, sem fechar o modal.
+- Fecha com Esc, clique fora ou botão fechar. O foco fica preso dentro e volta ao card ao fechar; `role="dialog"`, `aria-modal` e rótulo pelo título.
+- Tempo real: se o arquivo mudar por fora com o modal aberto (status, título ou corpo), o conteúdo e o status se atualizam sozinhos; se a task for removida, o modal fecha com aviso.
+- Servidor: `GET /api/tasks/:id` devolve a task com `body` e `extra`. Lê só o `.md` da task encontrada pelo scanner, dentro do repo aberto e das pastas `specs`/`tasks`, com as mesmas proteções de caminho (o `id` nunca vira caminho; symlink para fora é recusado). Cada task do estado traz `rev` (tamanho + data do arquivo) para que edições só do corpo gerem `board-changed`.
+- Visual: mesma paleta azul sóbria, claro e escuro.
+

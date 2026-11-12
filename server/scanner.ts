@@ -8,6 +8,7 @@ export interface Task {
   title: string;
   status: string;
   file: string; // relativo ao repo, com "/"
+  rev?: string; // muda quando o arquivo muda (tamanho + data): faz o board avisar edições do corpo
 }
 export interface Ignored {
   file: string;
@@ -77,7 +78,8 @@ export async function scanRepo(root: string): Promise<ScanResult> {
       continue;
     }
     seen.set(id, file);
-    tasks.push({ id, title, status, file });
+    const stat = await fs.stat(path.join(realRoot, file)).catch(() => null);
+    tasks.push({ id, title, status, file, ...(stat ? { rev: `${stat.size}-${Math.round(stat.mtimeMs)}` } : {}) });
   }
   return { tasks, ignored };
 }

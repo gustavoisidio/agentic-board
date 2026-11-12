@@ -94,6 +94,10 @@ export function createApp(options: AppOptions) {
     res.json({ ...session.current(), unavailable: session.isUnavailable() });
   });
 
+  api.get('/tasks/:id', wrap(async (req, res) => {
+    res.json(await session.taskDetail(String(req.params.id)));
+  }));
+
   api.patch('/tasks/:id/status', wrap(async (req, res) => {
     res.json(await session.moveTask(String(req.params.id), req.body?.status));
   }));

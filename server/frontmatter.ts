@@ -11,6 +11,29 @@ export type ParseResult =
   | { kind: 'invalid'; reason: string } // tem frontmatter, mas inválido: vai para o aviso
   | { kind: 'ok'; fields: TaskFields };
 
+export interface TaskDetail {
+  body: string;
+  extra: Record<string, unknown>; // campos do frontmatter além de id/title/status
+}
+
+/** Corpo (depois do frontmatter) e campos extras. Só para exibir: não interpreta o corpo. */
+export function readTaskDetail(content: string): TaskDetail | null {
+  const lines = splitLines(content);
+  const end = headerEnd(lines);
+  if (end === null || end === -1) return null;
+  let data: unknown;
+  try {
+    data = YAML.parse(lines.slice(1, end).join('\n'));
+  } catch {
+    return null;
+  }
+  const extra: Record<string, unknown> = {};
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    for (const [key, value] of Object.entries(data)) if (!(REQUIRED as readonly string[]).includes(key)) extra[key] = value;
+  }
+  return { body: lines.slice(end + 1).join('\n').replace(/\r$/gm, '').replace(/^\n+/, ''), extra };
+}
+
 export class RewriteError extends Error {}
 
 const REQUIRED = ['id', 'title', 'status'] as const;
