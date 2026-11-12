@@ -48,3 +48,14 @@ Qualquer markdown. O board não interpreta o corpo no MVP.
 ## Reescrita segura
 
 Mover uma task altera **apenas a linha `status:`** do frontmatter. Corpo, outros campos, ordem, comentários e quebras de linha (LF/CRLF) permanecem intactos. Se a linha `status:` não puder ser localizada com segurança, a operação falha com erro e o arquivo não é tocado. A gravação é atômica (arquivo temporário + rename).
+
+## Corpo em capítulos (convenção recomendada)
+
+O parser não valida o corpo, mas o modal da task (`02-comportamento.md`, seção 10.1) mostra cada título `##` como um capítulo recolhível e cada `###` como subcapítulo. Recomenda-se escrever o corpo assim:
+
+- Uma linha de contexto antes do primeiro `##` (repositórios, origem, esforço): fica sempre visível.
+- Seções `##` numeradas, usando só as que fizerem sentido: 1 Objetivo, 2 Especificação, 3 Impacto, 4 Plano, 5 Critérios de aceite, 6 Decisões em aberto, 7 Registro de execução, 8 Riscos, 9 Como testar.
+- Objetivo curto e legível sozinho; Especificação com requisitos de ID estável.
+
+Task sem `##` continua válida e abre normalmente. Exemplo: `docs/tasks/EPC-11.md` do repositório Uptodate.
+

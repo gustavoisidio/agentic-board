@@ -87,6 +87,26 @@ Todas sob `/api`, JSON, só em `127.0.0.1` (ou no IP da rede se o servidor subiu
 
 `tasks[]`: `{ id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`.
 
+## Padrão recomendado: task em capítulos
+
+Recomendado, não obrigatório (o parser não valida o corpo). O modal da task mostra cada `##` como um capítulo recolhível (e cada `###` como subcapítulo), tudo recolhido ao abrir, com o texto antes do primeiro `##` sempre visível. Task sem `##` abre normalmente.
+
+- **Antes do primeiro `##`:** uma linha de contexto (repositórios, origem, esforço).
+- **Seções `##` numeradas**, usando só as que fizerem sentido:
+  1. Objetivo
+  2. Especificação
+  3. Impacto
+  4. Plano
+  5. Critérios de aceite
+  6. Decisões em aberto
+  7. Registro de execução
+  8. Riscos
+  9. Como testar
+- **Objetivo** curto e legível sozinho (quem lê só ele entende o porquê).
+- **Especificação** com requisitos de ID estável (ex.: `SPEC-XXX-NN`), para que testes e commits possam citá-los.
+- Títulos dentro de bloco de código (```) não viram capítulos.
+- Exemplo completo: `docs/tasks/EPC-11.md` do repositório Uptodate. Convenção também registrada em `specs/01-formato-da-task.md`.
+
 ## Ordem dos cards
 
 Fila por coluna ([T-001](specs/tasks/T-001.md)): o card há mais tempo na coluna fica no topo; empate por `id`. O instante de entrada fica em `~/.agentic-board/queues/` (fora do repo); sem registro, usa a data do arquivo (`estimated`). Cada task traz `enteredAt`.

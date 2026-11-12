@@ -33,8 +33,8 @@ describe('modal da task', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     expect(dialog.textContent).toContain('T-1');
-    await waitFor(() => expect(screen.getByTestId('task-body').innerHTML).toContain('<h1>Corpo</h1>'));
-    expect(screen.getByTestId('task-body').innerHTML).not.toContain('<script');
+    await waitFor(() => expect(screen.getByTestId('task-intro').innerHTML).toContain('<h1>Corpo</h1>'));
+    expect(screen.getByTestId('task-intro').innerHTML).not.toContain('<script');
     expect(dialog.textContent).toContain('priority');
   });
 

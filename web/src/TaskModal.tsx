@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type BoardState, type Task, type TaskDetail } from './api';
+import { allKeys, splitChapters, type Chapter } from './chapters';
 import { renderMarkdown } from './markdown';
 
 interface Props {
@@ -32,7 +33,27 @@ export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props
     return () => { cancelled = true; };
   }, [task.id, task.rev, task.status, task.title]);
 
-  const html = useMemo(() => (detail ? renderMarkdown(detail.body) : ''), [detail]);
+  const parts = useMemo(() => (detail ? splitChapters(detail.body) : null), [detail]);
+  const [open, setOpen] = useState<Set<string>>(new Set()); // tudo recolhido ao abrir; sem persistência entre aberturas
+
+  // arquivo mudou por fora: capítulos abertos continuam abertos (posição + texto do título); os que sumiram recolhem
+  useEffect(() => {
+    if (!parts) return;
+    const alive = new Set(allKeys(parts.chapters));
+    setOpen((current) => {
+      const kept = new Set([...current].filter((k) => alive.has(k)));
+      return kept.size === current.size ? current : kept;
+    });
+  }, [parts]);
+
+  const toggle = (key: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const everyKey = parts ? allKeys(parts.chapters) : [];
+  const allOpen = everyKey.length > 0 && everyKey.every((k) => open.has(k));
 
   // foco no modal ao abrir e de volta ao card ao fechar
   useEffect(() => {
@@ -81,7 +102,23 @@ export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props
         </label>
         {error && <p className="error" role="alert">{error}</p>}
         {!detail && !error && <p className="muted">Carregando…</p>}
-        {detail && <div className="markdown" data-testid="task-body" dangerouslySetInnerHTML={{ __html: html }} />}
+        {parts && (
+          <>
+            {parts.intro && <div className="markdown" data-testid="task-intro" dangerouslySetInnerHTML={{ __html: renderMarkdown(parts.intro) }} />}
+            {parts.chapters.length > 0 && (
+              <>
+                <button type="button" className="chapters-toggle" onClick={() => setOpen(allOpen ? new Set() : new Set(everyKey))}>
+                  {allOpen ? 'Recolher tudo' : 'Expandir tudo'}
+                </button>
+                <div className="chapters" data-testid="task-body">
+                  {parts.chapters.map((c) => (
+                    <ChapterView key={c.key} chapter={c} open={open} onToggle={toggle} idPrefix={titleId} />
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
         {extras.length > 0 && (
           <dl className="extras" aria-label="Campos extras">
             {extras.map(([key, value]) => (
@@ -92,5 +129,36 @@ export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props
         <p className="muted small mono">{task.file}</p>
       </div>
     </div>
+  );
+}
+
+function Section({ id, title, level, open, onToggle, children }: { id: string; title: string; level: 2 | 3; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  const Heading = level === 2 ? 'h3' : 'h4';
+  return (
+    <section className={`chapter chapter-${level}`}>
+      <Heading>
+        <button type="button" id={`${id}-btn`} aria-expanded={open} aria-controls={`${id}-body`} onClick={onToggle}>
+          <span className="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          {title}
+        </button>
+      </Heading>
+      <div id={`${id}-body`} role="region" aria-labelledby={`${id}-btn`} hidden={!open}>
+        {open && children}
+      </div>
+    </section>
+  );
+}
+
+function ChapterView({ chapter, open, onToggle, idPrefix }: { chapter: Chapter; open: Set<string>; onToggle: (key: string) => void; idPrefix: string }) {
+  const id = `${idPrefix}-c${chapter.key.split(':')[0]}`;
+  return (
+    <Section id={id} title={chapter.title} level={2} open={open.has(chapter.key)} onToggle={() => onToggle(chapter.key)}>
+      {chapter.body && <div className="markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(chapter.body) }} />}
+      {chapter.subs.map((sub, j) => (
+        <Section key={sub.key} id={`${id}-s${j}`} title={sub.title} level={3} open={open.has(sub.key)} onToggle={() => onToggle(sub.key)}>
+          {sub.body && <div className="markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(sub.body) }} />}
+        </Section>
+      ))}
+    </Section>
   );
 }

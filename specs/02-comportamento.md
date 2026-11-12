@@ -73,3 +73,13 @@ Carregando (skeleton leve), vazio, erro de leitura por arquivo (vai para o aviso
 - Servidor: `GET /api/tasks/:id` devolve a task com `body` e `extra`. Lê só o `.md` da task encontrada pelo scanner, dentro do repo aberto e das pastas `specs`/`tasks`, com as mesmas proteções de caminho (o `id` nunca vira caminho; symlink para fora é recusado). Cada task do estado traz `rev` (tamanho + data do arquivo) para que edições só do corpo gerem `board-changed`.
 - Visual: mesma paleta azul sóbria, claro e escuro.
 
+### 10.1 Capítulos recolhíveis
+
+- O corpo da task vira capítulos: cada título `##` é um capítulo e cada `###` dentro dele, um subcapítulo aninhado, também recolhível. O texto antes do primeiro `##` (título `#`, linha de contexto com repositórios, origem etc.) fica sempre visível no topo, fora dos capítulos. Um `###` antes do primeiro `##` é texto de abertura.
+- Estado inicial: tudo recolhido, mostrando só a lista de títulos (com o número, se o markdown tiver). Clicar abre/fecha aquele capítulo; abrir um capítulo não abre os subcapítulos (que aparecem, recolhidos, dentro dele).
+- Botão **Expandir tudo / Recolher tudo** acima dos capítulos.
+- Atualização por fora com o modal aberto: os capítulos abertos continuam abertos, identificados por posição + texto do título; se o título sumiu ou mudou, o capítulo recolhe.
+- Task sem nenhum `##` abre normalmente, sem capítulos nem botão.
+- Cada título é um botão com `aria-expanded` e `aria-controls`; Enter e Espaço alternam. O estado não é guardado entre aberturas do modal.
+- Títulos `#`, `##` ou `###` dentro de bloco de código (``` ou ~~~) não contam como capítulo. A sanitização do markdown (10) vale para cada trecho.
+
