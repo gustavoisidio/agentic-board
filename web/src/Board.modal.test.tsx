@@ -3,18 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Board } from './Board';
 import type { BoardState } from './api';
+import { boardProps, makeView } from './testBoard';
 
 const board: BoardState = {
-  repo: { path: '/r/repo', name: 'repo' },
+  repos: [{ repoId: 'r1', name: 'repo', path: '/r/repo', color: 'azul', count: 1, available: true }],
+  hidden: [],
   columns: [{ key: 'backlog', name: 'Backlog', count: 1 }, { key: 'feito', name: 'Feito', count: 0 }],
-  tasks: [{ id: 'T-1', title: 'Primeira', status: 'Backlog', file: 'specs/tasks/a.md', column: 'backlog', enteredAt: null }],
+  tasks: [{ repoId: 'r1', id: 'T-1', title: 'Primeira', status: 'Backlog', file: 'specs/tasks/a.md', column: 'backlog', enteredAt: null }],
   ignored: [],
 };
 
 function setup(overrides: Partial<BoardState> = {}, onMove = vi.fn()) {
   const state = { ...board, ...overrides };
   const notify = vi.fn();
-  const utils = render(<Board board={state} unavailable={false} onLeave={() => undefined} onMove={onMove} onApply={() => undefined} onReorder={() => undefined} notify={notify} />);
+  const utils = render(<Board board={makeView(state)} {...boardProps({ onMove, notify })} />);
   return { ...utils, state, onMove, notify };
 }
 
@@ -57,7 +59,7 @@ describe('modal da task', () => {
     fireEvent.change(select, { target: { value: 'backlog' } });
     expect(onMove).not.toHaveBeenCalled();
     fireEvent.change(select, { target: { value: 'feito' } });
-    expect(onMove).toHaveBeenCalledWith('T-1', 'feito', 'Feito');
+    expect(onMove).toHaveBeenCalledWith('r1', 'T-1', 'feito', 'Feito');
   });
 
   it('Esc e clique fora fecham, e o foco volta ao card', async () => {
@@ -79,7 +81,7 @@ describe('modal da task', () => {
     const { rerender, notify, state } = setup();
     fireEvent.click(screen.getByRole('button', { name: /T-1: Primeira/ }));
     await screen.findByRole('dialog');
-    rerender(<Board board={{ ...state, tasks: [] }} unavailable={false} onLeave={() => undefined} onMove={() => undefined} onApply={() => undefined} onReorder={() => undefined} notify={notify} />);
+    rerender(<Board board={makeView({ ...state, tasks: [] })} {...boardProps({ notify })} />);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(notify).toHaveBeenCalledWith('A task T-1 foi removida.');
   });

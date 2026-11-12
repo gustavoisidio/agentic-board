@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addRecent, readRecent } from './appConfig.js';
-import { HttpError, Session } from './session.js';
+import { HttpError, Workspace } from './workspace.js';
 
 export interface AppOptions {
   port: number;
@@ -34,7 +34,8 @@ function osascriptPick(): Promise<string | null> {
 }
 
 export function createApp(options: AppOptions) {
-  const session = new Session();
+  const session = new Workspace();
+  const ready = session.init();
   const platform = options.platform ?? process.platform;
   const names = ['127.0.0.1', 'localhost', ...(options.extraHosts ?? [])];
   const hosts = new Set(names.map((n) => `${n}:${options.port}`));
@@ -75,39 +76,67 @@ export function createApp(options: AppOptions) {
     res.json(recent.map((p) => ({ path: p, name: path.basename(p) || p })));
   }));
 
-  api.post('/repo', wrap(async (req, res) => {
-    let input = typeof req.body?.path === 'string' ? req.body.path.trim() : '';
-    if (!input) throw new HttpError(400, 'Informe o caminho do repositório');
-    if (input === '~' || input.startsWith('~/')) input = path.join(os.homedir(), input.slice(1));
-    if (!path.isAbsolute(input)) throw new HttpError(400, 'Use um caminho absoluto');
-    const state = await session.open(input);
-    await addRecent(state.repo.path);
-    res.json(state);
+  const home = (input: unknown) => {
+    let value = typeof input === 'string' ? input.trim() : '';
+    if (!value) throw new HttpError(400, 'Informe o caminho do repositório');
+    if (value === '~' || value.startsWith('~/')) value = path.join(os.homedir(), value.slice(1));
+    if (!path.isAbsolute(value)) throw new HttpError(400, 'Use um caminho absoluto');
+    return value;
+  };
+
+  // ---- repositórios abertos ----
+  api.post('/repos', wrap(async (req, res) => {
+    res.status(201).json(await session.addRepo(home(req.body?.path)));
+  }));
+  api.delete('/repos/:repoId', wrap(async (req, res) => {
+    res.json(await session.removeRepo(String(req.params.repoId)));
+  }));
+  api.put('/repos/:repoId/color', wrap(async (req, res) => {
+    res.json(await session.setColor(String(req.params.repoId), req.body?.color));
+  }));
+  api.put('/filter', wrap(async (req, res) => {
+    res.json({ hidden: await session.setFilter(req.body?.hidden) });
   }));
 
+  // rotas antigas (1 repo): POST /repo abre se ainda não estiver aberto; DELETE /repo fecha o único repo aberto
+  api.post('/repo', wrap(async (req, res) => {
+    res.json(await session.ensureRepo(home(req.body?.path)));
+  }));
   api.delete('/repo', wrap(async (_req, res) => {
-    await session.closeAndNotify();
+    const repos = session.current().repos;
+    if (repos.length !== 1) throw new HttpError(409, repos.length ? 'Há mais de um repositório aberto: use DELETE /api/repos/:repoId' : 'Nenhum repositório aberto');
+    await session.removeRepo(repos[0]!.repoId);
     res.status(204).end();
   }));
 
   api.get('/board', (_req, res) => {
-    res.json({ ...session.current(), unavailable: session.isUnavailable() });
+    res.json(session.current());
   });
 
+  // ---- tasks ----
+  api.get('/repos/:repoId/tasks/:id', wrap(async (req, res) => {
+    res.json(await session.taskDetail(String(req.params.repoId), String(req.params.id)));
+  }));
+  api.patch('/repos/:repoId/tasks/:id/status', wrap(async (req, res) => {
+    res.json(await session.moveTask(String(req.params.repoId), String(req.params.id), req.body?.status));
+  }));
+  // rotas antigas: valem quando o id é único entre os repos abertos
   api.get('/tasks/:id', wrap(async (req, res) => {
-    res.json(await session.taskDetail(String(req.params.id)));
+    const id = String(req.params.id);
+    res.json(await session.taskDetail(session.resolveLegacy(id), id));
+  }));
+  api.patch('/tasks/:id/status', wrap(async (req, res) => {
+    const id = String(req.params.id);
+    res.json(await session.moveTask(session.resolveLegacy(id), id, req.body?.status));
   }));
 
-  api.patch('/tasks/:id/status', wrap(async (req, res) => {
-    res.json(await session.moveTask(String(req.params.id), req.body?.status));
+  // ---- colunas (unificadas entre os repos) ----
+  api.patch('/columns/order', wrap(async (req, res) => {
+    res.json(await session.reorderColumns(req.body?.order));
   }));
 
   api.post('/columns', wrap(async (req, res) => {
     res.status(201).json(await session.createColumn(req.body?.name));
-  }));
-
-  api.patch('/columns/order', wrap(async (req, res) => {
-    res.json(await session.reorderColumns(req.body?.order));
   }));
 
   api.patch('/columns/:key', wrap(async (req, res) => {
@@ -153,5 +182,5 @@ export function createApp(options: AppOptions) {
     }
   });
 
-  return { app, session };
+  return { app, session, ready };
 }

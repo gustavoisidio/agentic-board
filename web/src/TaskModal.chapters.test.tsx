@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from './api';
 import { TaskModal } from './TaskModal';
 
-const task: Task = { id: 'T-1', title: 'Cap', status: 'Backlog', file: 'specs/tasks/a.md', column: 'backlog', enteredAt: null, rev: '1' };
+const task: Task = { repoId: 'r1', id: 'T-1', title: 'Cap', status: 'Backlog', file: 'specs/tasks/a.md', column: 'backlog', enteredAt: null, rev: '1' };
 const columns = [{ key: 'backlog', name: 'Backlog', count: 1 }];
 const BODY = 'Contexto sempre visível\n\n## 1. Objetivo\ntexto obj\n\n## 2. Plano\nabertura\n\n### 2.1 Passo\npasso um\n\n```\n## no código\n```\n';
 

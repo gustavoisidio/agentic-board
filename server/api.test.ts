@@ -6,10 +6,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 import { put, task, tmpDir } from './helpers.js';
-import type { Session } from './session.js';
+import type { Workspace } from './workspace.js';
 
 let server: Server;
-let session: Session;
+let session: Workspace;
 let base: string;
 let root: string;
 
@@ -260,7 +260,7 @@ describe('ignorados', () => {
     await put(root, 'specs/tasks/rascunho.md', '---\nid: T-9\ntitle: Rascunho\n---\n');
     const board = await open();
     expect(board.tasks.map((t: { id: string }) => t.id)).not.toContain('T-9');
-    expect(board.ignored).toEqual([{ file: 'specs/tasks/rascunho.md', reason: 'campo obrigatório ausente: status' }]);
+    expect(board.ignored).toEqual([{ file: 'specs/tasks/rascunho.md', reason: 'campo obrigatório ausente: status', repoId: board.repos[0].repoId }]);
   });
 });
 
@@ -303,29 +303,34 @@ describe('tempo real', () => {
     expect(text).toContain('T-8');
   });
 
-  it('abrir outro repositório avisa quem já está conectado', async () => {
+  it('adicionar e remover repositório avisam quem já está conectado', async () => {
     await open();
     const other = await tmpDir('outro-');
     await put(other, 'specs/tasks/z.md', task('Z-1', 'Backlog'));
-    const events: { type: string; state?: { tasks: { id: string }[] } }[] = [];
+    const events: { type: string; state: { repos: unknown[]; tasks: { id: string }[] } }[] = [];
     session.subscribe((e) => events.push(e as never));
-    await call('POST', '/api/repo', { path: other });
-    const changed = events.find((e) => e.type === 'board-changed');
-    expect(changed?.state?.tasks.map((t) => t.id)).toEqual(['Z-1']);
-    await call('DELETE', '/api/repo');
-    expect(events.map((e) => e.type)).toContain('repo-closed');
+    await call('POST', '/api/repos', { path: other });
+    expect(events.at(-1)?.state.tasks.map((t) => t.id)).toContain('Z-1');
+    expect(events.at(-1)?.state.repos).toHaveLength(2);
+    const id = events.at(-1)!.state.repos[1] as { repoId: string };
+    await call('DELETE', `/api/repos/${id.repoId}`);
+    expect(events.at(-1)?.state.repos).toHaveLength(1);
   });
 
-  it('repo removido vira indisponível', async () => {
+  it('repo removido vira indisponível e volta quando reaparece, sem derrubar os outros', async () => {
     const tmp = await tmpDir('efemero-');
-    await put(tmp, 'specs/tasks/a.md', task('T-1', 'A'));
-    await call('POST', '/api/repo', { path: tmp });
-    const events: string[] = [];
-    session.subscribe((e) => events.push(e.type));
+    await put(tmp, 'specs/tasks/a.md', task('E-1', 'A'));
+    await open();
+    await call('POST', '/api/repos', { path: tmp });
     await rm(tmp, { recursive: true, force: true });
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline && !events.includes('repo-unavailable')) await wait(100);
-    expect(events).toContain('repo-unavailable');
+    const deadline = Date.now() + 6000;
+    let state = await board();
+    while (Date.now() < deadline && state.repos.every((r: { available: boolean }) => r.available)) {
+      await wait(100);
+      state = await board();
+    }
+    expect(state.repos.map((r: { available: boolean }) => r.available)).toEqual([true, false]);
+    expect(state.tasks.map((t: { id: string }) => t.id)).toEqual(['T-1', 'T-2', 'T-3']);
   });
 });
 
@@ -435,6 +440,150 @@ describe('conteúdo da task (modal)', () => {
     while (Date.now() < deadline && !events.includes('board-changed')) await wait(50);
     expect(events).toContain('board-changed');
     expect((await (await call('GET', '/api/tasks/T-1')).json()).body).toContain('novo texto');
+  });
+});
+
+describe('vários repositórios', () => {
+  let second: string;
+  const names = (b: { columns: { name: string }[] }) => b.columns.map((c) => c.name);
+  const add = (p: string) => call('POST', '/api/repos', { path: p });
+
+  beforeEach(async () => {
+    second = await tmpDir('repo2-');
+    await put(second, 'specs/tasks/x.md', task('T-1', 'Backlog', 'Do segundo'));
+    await put(second, 'specs/tasks/y.md', task('Y-1', 'Revisão'));
+  });
+
+  it('abre dois repos: ids repetidos viram dois cards e não geram aviso de duplicata', async () => {
+    await open();
+    const state = await (await add(second)).json();
+    expect(state.repos).toHaveLength(2);
+    expect(state.tasks.filter((t: { id: string }) => t.id === 'T-1').map((t: { repoId: string }) => t.repoId).sort()).toEqual(state.repos.map((r: { repoId: string }) => r.repoId).sort());
+    expect(state.ignored).toEqual([]);
+    expect(names(state)).toEqual(['Backlog', 'Em execução', 'Revisão']);
+    expect(state.columns[0].count).toBe(3);
+  });
+
+  it('o mesmo repo (inclusive por outro caminho) não duplica', async () => {
+    await open();
+    const dup = await add(root);
+    expect(dup.status).toBe(409);
+    expect((await dup.json()).error).toBe('Esse repositório já está aberto');
+    await symlink(root, path.join(await tmpDir('link-'), 'atalho')).catch(() => undefined);
+  });
+
+  it('cores: primeira livre, estáveis ao reabrir, troca lembrada', async () => {
+    await open();
+    const two = await (await add(second)).json();
+    expect(two.repos.map((r: { color: string }) => r.color)).toEqual(['azul', 'teal']);
+    const [first, other] = two.repos as { repoId: string }[];
+    expect((await call('PUT', `/api/repos/${other!.repoId}/color`, { color: 'vinho' })).status).toBe(200);
+    expect((await call('PUT', `/api/repos/${other!.repoId}/color`, { color: 'neon' })).status).toBe(400);
+    // reabrir tudo a partir do config do app
+    const port = await freePort();
+    const again = createApp({ port });
+    await again.ready;
+    expect(again.session.current().repos.map((r) => [r.repoId, r.color])).toEqual([[first!.repoId, 'azul'], [other!.repoId, 'vinho']]);
+    await again.session.close();
+  });
+
+  it('nomes iguais são desambiguados pela pasta pai', async () => {
+    const a = path.join(await tmpDir('pai-a-'), 'app');
+    const b = path.join(await tmpDir('pai-b-'), 'app');
+    await put(a, 'specs/tasks/a.md', task('A-1', 'X'));
+    await put(b, 'specs/tasks/b.md', task('B-1', 'X'));
+    await call('POST', '/api/repos', { path: a });
+    const state = await (await add(b)).json();
+    expect(state.repos.map((r: { name: string }) => r.name)).toEqual([expect.stringMatching(/^app \(pai-a-/), expect.stringMatching(/^app \(pai-b-/)]);
+  });
+
+  it('repo que sumiu aparece indisponível ao reabrir, sem derrubar os outros', async () => {
+    await open();
+    const gone = await tmpDir('sumiu-');
+    await put(gone, 'specs/tasks/g.md', task('G-1', 'X'));
+    await add(gone);
+    await session.close();
+    await rm(gone, { recursive: true, force: true });
+    const port = await freePort();
+    const again = createApp({ port });
+    await again.ready;
+    const st = again.session.current();
+    expect(st.repos.map((r) => r.available)).toEqual([true, false]);
+    expect(st.tasks.map((t) => t.id)).toEqual(['T-1', 'T-2', 'T-3']);
+    await again.session.close();
+  });
+
+  it('mover grava só o .md daquele repo (rota com repoId); id de repo inválido ou traversal dão erro', async () => {
+    await open();
+    const state = await (await add(second)).json();
+    const [r1, r2] = state.repos as { repoId: string }[];
+    const before = await read('specs/tasks/a.md');
+    const res = await call('PATCH', `/api/repos/${r2!.repoId}/tasks/T-1/status`, { status: 'Revisão' });
+    expect(res.status).toBe(200);
+    expect(await readFile(path.join(second, 'specs/tasks/x.md'), 'utf8')).toContain('status: Revisão');
+    expect(await read('specs/tasks/a.md')).toBe(before);
+    expect((await call('GET', `/api/repos/${r1!.repoId}/tasks/T-1`)).status).toBe(200);
+    expect((await call('GET', '/api/repos/zzzz/tasks/T-1')).status).toBe(404);
+    expect((await call('GET', `/api/repos/${encodeURIComponent('../..')}/tasks/T-1`)).status).toBe(404);
+    expect((await call('GET', `/api/repos/${r1!.repoId}/tasks/${encodeURIComponent('../../../etc/passwd')}`)).status).toBe(404);
+  });
+
+  it('rota antiga sem repo: id repetido é ambíguo (409); id único funciona', async () => {
+    await open();
+    await add(second);
+    expect((await call('GET', '/api/tasks/T-1')).status).toBe(409);
+    expect((await call('GET', '/api/tasks/Y-1')).status).toBe(200);
+  });
+
+  it('ordem das colunas vai para o config do app, por conjunto, sem escrever nos .board.json', async () => {
+    await open();
+    await add(second);
+    await call('POST', '/api/columns', { name: 'Feito' });
+    const res = await call('PATCH', '/api/columns/order', { order: ['Feito', 'Revisão', 'Backlog', 'Em execução'] });
+    expect(names(await res.json())).toEqual(['Feito', 'Revisão', 'Backlog', 'Em execução']);
+    await expect(read('specs/.board.json')).rejects.toThrow();
+    await expect(readFile(path.join(second, 'specs/.board.json'), 'utf8')).rejects.toThrow();
+    const cfg = JSON.parse(await readFile(path.join(process.env.AGENTIC_BOARD_HOME!, 'config.json'), 'utf8'));
+    expect(Object.values(cfg.columns)).toEqual([['Feito', 'Revisão', 'Backlog', 'Em execução']]);
+    // remover um repo muda o conjunto: volta ao modo de 1 repo (usa o .board.json dele, sem a ordem do conjunto)
+    const only = (await board()).repos[1].repoId;
+    const after = await (await call('DELETE', `/api/repos/${only}`)).json();
+    expect(names(after)).not.toContain('Feito');
+  });
+
+  it('renomear reescreve os cards de todos os repos; excluir só se vazia em todos', async () => {
+    await open();
+    await add(second);
+    const res = await (await call('PATCH', '/api/columns/backlog', { name: 'A fazer' })).json();
+    expect(res.changed.sort()).toEqual(['specs/tasks/a.md', 'specs/tasks/b.md', 'specs/tasks/x.md']);
+    expect(await readFile(path.join(second, 'specs/tasks/x.md'), 'utf8')).toContain('status: A fazer');
+    // vazia em um repo, mas com card no outro: não exclui
+    await call('POST', '/api/columns', { name: 'Vazia' });
+    await call('PATCH', `/api/repos/${(await board()).repos[1].repoId}/tasks/Y-1/status`, { status: 'Vazia' });
+    expect((await call('DELETE', '/api/columns/vazia')).status).toBe(409);
+    await call('PATCH', `/api/repos/${(await board()).repos[1].repoId}/tasks/Y-1/status`, { status: 'Revisão' });
+    expect((await call('DELETE', '/api/columns/vazia')).status).toBe(200);
+  });
+
+  it('filtro: lembrado por conjunto; não deixa ocultar todos', async () => {
+    await open();
+    const state = await (await add(second)).json();
+    const [r1, r2] = state.repos as { repoId: string }[];
+    expect((await call('PUT', '/api/filter', { hidden: [r2!.repoId] })).status).toBe(200);
+    expect((await board()).hidden).toEqual([r2!.repoId]);
+    expect((await call('PUT', '/api/filter', { hidden: [r1!.repoId, r2!.repoId] })).status).toBe(400);
+    expect((await call('PUT', '/api/filter', { hidden: 'x' })).status).toBe(400);
+    expect((await board()).hidden).toEqual([r2!.repoId]);
+  });
+
+  it('remover um repo só fecha no board: nada muda em disco', async () => {
+    await open();
+    const state = await (await add(second)).json();
+    const mdBefore = await readFile(path.join(second, 'specs/tasks/x.md'), 'utf8');
+    const res = await call('DELETE', `/api/repos/${state.repos[1].repoId}`);
+    expect((await res.json()).repos).toHaveLength(1);
+    expect(await readFile(path.join(second, 'specs/tasks/x.md'), 'utf8')).toBe(mdBefore);
+    expect((await call('DELETE', `/api/repos/${state.repos[1].repoId}`)).status).toBe(404);
   });
 });
 

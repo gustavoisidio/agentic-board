@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type BoardState, type Task, type TaskDetail } from './api';
+import { api, type BoardState, type Repo, type Task, type TaskDetail } from './api';
+import { repoColorVar } from './RepoChips';
 import { allKeys, splitChapters, type Chapter } from './chapters';
 import { renderMarkdown } from './markdown';
 
 interface Props {
   task: Task;
   columns: BoardState['columns'];
-  onMove: (id: string, columnKey: string, columnName: string) => void;
+  repo?: Repo;
+  showRepo?: boolean;
+  onMove: (repoId: string, id: string, columnKey: string, columnName: string) => void;
   onClose: () => void;
   returnFocus: HTMLElement | null;
 }
@@ -18,20 +21,20 @@ function formatExtra(value: unknown): string {
 }
 
 /** Modal somente leitura da task (SPEC modal): cabeçalho, markdown sanitizado, campos extras e troca de status. */
-export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props) {
+export function TaskModal({ task, repo, showRepo = false, columns, onMove, onClose, returnFocus }: Props) {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDivElement>(null);
-  const titleId = `task-modal-${task.id}`;
+  const titleId = `task-modal-${task.repoId}-${task.id}`;
 
   // carrega o conteúdo e recarrega quando o arquivo muda por fora (rev) ou o status muda
   useEffect(() => {
     let cancelled = false;
-    api.task(task.id)
+    api.task(task.repoId, task.id)
       .then((d) => { if (!cancelled) { setDetail(d); setError(''); } })
       .catch((e: Error) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
-  }, [task.id, task.rev, task.status, task.title]);
+  }, [task.repoId, task.id, task.rev, task.status, task.title]);
 
   const parts = useMemo(() => (detail ? splitChapters(detail.body) : null), [detail]);
   const [open, setOpen] = useState<Set<string>>(new Set()); // tudo recolhido ao abrir; sem persistência entre aberturas
@@ -84,6 +87,9 @@ export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props
         <header className="modal-head">
           <div className="modal-title">
             <span className="id">{task.id}</span>
+            {showRepo && repo && (
+              <span className="modal-repo" title={repo.path}><span className="dot-static" style={{ background: repoColorVar(repo.color) }} aria-hidden="true" />{repo.name}</span>
+            )}
             <h2 id={titleId}>{task.title}</h2>
           </div>
           <button type="button" className="modal-close" aria-label="Fechar" onClick={onClose} data-autofocus>✕</button>
@@ -94,7 +100,7 @@ export function TaskModal({ task, columns, onMove, onClose, returnFocus }: Props
             value={task.column}
             onChange={(e) => {
               const column = columns.find((c) => c.key === e.target.value);
-              if (column && column.key !== task.column) onMove(task.id, column.key, column.name);
+              if (column && column.key !== task.column) onMove(task.repoId, task.id, column.key, column.name);
             }}
           >
             {columns.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}

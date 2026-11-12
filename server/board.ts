@@ -8,18 +8,28 @@ import type { Ignored, ScanResult, Task } from './scanner.js';
 export interface Column {
   key: string;
   name: string;
+  count: number; // cards da coluna em todos os repos abertos (o filtro é só visual, no front)
+}
+export interface RepoInfo {
+  repoId: string; // hash curto do caminho real
+  name: string; // nome curto (pasta; desambiguado pela pasta pai quando há nomes iguais)
+  path: string;
+  color: string;
   count: number;
+  available: boolean;
 }
 export interface BoardTask extends Task {
+  repoId: string;
   column: string; // chave normalizada da coluna
   enteredAt: string | null; // quando entrou na coluna atual (fila); null se não se sabe
   estimated?: true; // o instante veio da data do arquivo, não de um movimento visto pelo board
 }
 export interface BoardState {
-  repo: { path: string; name: string };
+  repos: RepoInfo[];
   tasks: BoardTask[];
   columns: Column[];
-  ignored: Ignored[];
+  ignored: (Ignored & { repoId: string })[];
+  hidden: string[]; // repoIds ocultos por padrão (filtro lembrado do conjunto)
   configError?: string;
 }
 
@@ -54,40 +64,56 @@ export async function writeConfig(root: string, columns: string[]): Promise<void
   await atomicWrite(path.join(root, CONFIG_REL), JSON.stringify({ version: 1, columns }, null, 2) + '\n');
 }
 
-/** Fila: o mais antigo na coluna primeiro; empate por id natural; sem instante conhecido, no fim. */
-export function compareQueue(a: { id: string; file?: string; enteredAt: string | null }, b: { id: string; file?: string; enteredAt: string | null }): number {
+/** Fila: o mais antigo na coluna primeiro; empate por id natural, depois repo e arquivo; sem instante conhecido, no fim. */
+export function compareQueue(
+  a: { id: string; repoId?: string; file?: string; enteredAt: string | null },
+  b: { id: string; repoId?: string; file?: string; enteredAt: string | null },
+): number {
   const ta = a.enteredAt ? Date.parse(a.enteredAt) : Infinity;
   const tb = b.enteredAt ? Date.parse(b.enteredAt) : Infinity;
   if (ta !== tb) return ta < tb ? -1 : 1;
-  return naturalCompare(a.id, b.id) || naturalCompare(a.file ?? '', b.file ?? '');
+  return naturalCompare(a.id, b.id) || naturalCompare(a.repoId ?? '', b.repoId ?? '') || naturalCompare(a.file ?? '', b.file ?? '');
 }
 
-/** Monta as colunas (ordem do .board.json, depois as vindas das tasks na ordem em que apareceram). */
-export function buildBoard(repoPath: string, scan: ScanResult, config: BoardConfig, entered: Entered = {}): BoardState {
+export interface RepoData {
+  info: Omit<RepoInfo, 'count'>;
+  scan: ScanResult;
+  entered: Entered;
+}
+
+/** Monta o board de todos os repos abertos: uma coluna por status normalizado (ordem salva, depois as das tasks). */
+export function buildBoard(repos: RepoData[], config: BoardConfig, hidden: string[] = []): BoardState {
   const names = new Map<string, string>(); // key -> nome exibido (primeira ocorrência)
   for (const name of config.columns) {
     const key = statusKey(name);
     if (key && !names.has(key)) names.set(key, name);
   }
-  for (const task of scan.tasks) {
-    const key = statusKey(task.status);
-    if (!names.has(key)) names.set(key, task.status);
+  for (const repo of repos) {
+    for (const task of repo.scan.tasks) {
+      const key = statusKey(task.status);
+      if (!names.has(key)) names.set(key, task.status);
+    }
   }
   const counts = new Map<string, number>();
-  const tasks: BoardTask[] = scan.tasks.map((t) => {
-    const column = statusKey(t.status);
-    counts.set(column, (counts.get(column) ?? 0) + 1);
-    const entry = entered[t.id];
-    const known = entry && entry.column === column ? entry : null;
-    return { ...t, column, enteredAt: known?.at ?? null, ...(known?.estimated ? { estimated: true as const } : {}) };
-  });
+  const tasks: BoardTask[] = [];
+  const perRepo = new Map<string, number>();
+  for (const repo of repos) {
+    for (const t of repo.scan.tasks) {
+      const column = statusKey(t.status);
+      counts.set(column, (counts.get(column) ?? 0) + 1);
+      perRepo.set(repo.info.repoId, (perRepo.get(repo.info.repoId) ?? 0) + 1);
+      const entry = repo.entered[t.id];
+      const known = entry && entry.column === column ? entry : null;
+      tasks.push({ ...t, repoId: repo.info.repoId, column, enteredAt: known?.at ?? null, ...(known?.estimated ? { estimated: true as const } : {}) });
+    }
+  }
   tasks.sort(compareQueue);
-  const columns = [...names].map(([key, name]) => ({ key, name, count: counts.get(key) ?? 0 }));
   return {
-    repo: { path: repoPath, name: path.basename(repoPath) || repoPath },
+    repos: repos.map((r) => ({ ...r.info, count: perRepo.get(r.info.repoId) ?? 0 })),
     tasks,
-    columns,
-    ignored: scan.ignored,
+    columns: [...names].map(([key, name]) => ({ key, name, count: counts.get(key) ?? 0 })),
+    ignored: repos.flatMap((r) => r.scan.ignored.map((i) => ({ ...i, repoId: r.info.repoId }))),
+    hidden,
     ...(config.error ? { configError: config.error } : {}),
   };
 }
