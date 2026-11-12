@@ -97,3 +97,11 @@ Vale para qualquer coluna, inclusive as que existem só por causa das tasks e as
 - **Rolagem horizontal:** ao arrastar perto das bordas do board, ele rola sozinho.
 - **Interação:** renomear mantém a posição; criar coluna continua entrando no final; a fila dos cards (seção 2) não muda ao reordenar colunas.
 
+## 12. Coluna "Concluído" esmaecida
+
+- **Regra:** a coluna cuja chave normalizada (a mesma dos status: trim, minúsculas, sem acentos, espaços colapsados) for exatamente `concluido` é tratada como concluída: pega `Concluído`, `concluido` e `CONCLUÍDO`; não pega `Concluída`, `Done` nem variações (fora do escopo). A comparação está num único lugar (`web/src/doneColumn.ts`), fácil de ampliar.
+- **Efeito:** a coluna inteira (cabeçalho, fundo e post-its) renderiza com opacidade reduzida, aplicada ao contêiner da coluna (os cards herdam, sem ficar duplamente apagados). Token CSS `--done-opacity` (0,7); o modal da task não é esmaecido (fica fora da coluna). O valor sugerido de 0,55 dá contraste de 3,2:1 no tema claro; 0,7 mantém o texto principal acima de AA (4,5:1) nos dois temas (4,9:1 no claro e 7,0:1 no escuro sobre a coluna; textos secundários, como o `id` pequeno, já eram mais discretos).
+- **Continua funcional:** arrastar cards para dentro e para fora, reordenar a coluna, renomear e abrir o modal ao clicar no card.
+- **Destaque:** ao passar o mouse, focar dentro da coluna ou durante um arrasto sobre ela (card ou coluna como alvo), a opacidade sobe para `--done-opacity-active` (0,9).
+- **Dinâmico:** renomear a coluna para outro nome faz voltar ao normal; renomear outra coluna para "Concluído" passa a esmaecê-la. Vale também para coluna vazia.
+

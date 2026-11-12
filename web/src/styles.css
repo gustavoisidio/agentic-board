@@ -1,6 +1,7 @@
 :root {
   --bg: #e4e9f0; --surface: #d3dbe7; --ink: #14233a; --muted: #5a6b84; --line: #b9c4d6;
   --accent: #1e3a8a; --note: #f4f7fb; --note-line: #9fb1cc; --danger: #9b1c1c;
+  --done-opacity: .7; --done-opacity-active: .9; /* .7 mantém o texto principal em AA (>= 4,5:1) nos dois temas */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -113,3 +114,10 @@ header h1 { font-size: 15px; margin: 0; }
 .col.ind-after::after { right: -9px; }
 .grip { border: 0; background: none; padding: 0 4px 0 0; color: var(--muted); cursor: grab; font-size: 16px; line-height: 1; }
 .grip:active { cursor: grabbing; }
+
+/* Coluna concluída: esmaecida como um todo (contêiner, não cada card); sobe ao passar o mouse ou ao ser alvo de arrasto. */
+.col[data-done='true'] { opacity: var(--done-opacity); transition: opacity .15s; }
+.col[data-done='true']:hover, .col[data-done='true']:focus-within, .col[data-done='true'].over,
+.col[data-done='true'].ind-before, .col[data-done='true'].ind-after { opacity: var(--done-opacity-active); }
+.col[data-done='true'].col-dragging { opacity: .4; }
+@media (prefers-reduced-motion: reduce) { .col[data-done='true'] { transition: none; } }
