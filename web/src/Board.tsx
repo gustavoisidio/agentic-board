@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { COLUMN_DRAG_TYPE, moveBy, moveColumn, type Side } from './columnOrder';
 import { RepoChips, repoColorVar } from './RepoChips';
+import { isDoneColumn } from './doneColumn';
 import { TaskModal } from './TaskModal';
 import { api, ApiError, taskKey, type BoardState, type Column as ColumnT, type Repo, type Task } from './api';
 import type { BoardView } from './useBoard';
@@ -235,6 +236,7 @@ function ColumnView({ column, tasks, repos, dimmed, indicator, onGripStart, onGr
     <section
       className={`col${over ? ' over' : ''}${dimmed ? ' col-dragging' : ''}${indicator ? ` ind-${indicator}` : ''}`}
       aria-label={column.name}
+      data-done={isDoneColumn(column.name) ? 'true' : undefined}
       onDragOver={(e) => {
         if (isColumnDrag(e)) {
           e.preventDefault(); // só colunas reordenam; o post-it nunca

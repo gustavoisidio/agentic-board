@@ -4,6 +4,7 @@
   /* cores por repositório (claro): sóbrias e distinguíveis */
   --repo-azul: #1e3a8a; --repo-teal: #0f766e; --repo-indigo: #4338ca; --repo-ambar: #b45309;
   --repo-musgo: #4d7c0f; --repo-vinho: #9f1239; --repo-ardosia: #475569; --repo-cobre: #c2410c;
+  --done-opacity: .7; --done-opacity-active: .9; /* .7 mantém o texto principal em AA (>= 4,5:1) nos dois temas */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -143,3 +144,9 @@ header h1 { font-size: 15px; margin: 0; }
 .note-repo { color: var(--muted); }
 .modal-repo { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
 .dot-static { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+/* Coluna concluída: esmaecida como um todo (contêiner, não cada card); sobe ao passar o mouse ou ao ser alvo de arrasto. */
+.col[data-done='true'] { opacity: var(--done-opacity); transition: opacity .15s; }
+.col[data-done='true']:hover, .col[data-done='true']:focus-within, .col[data-done='true'].over,
+.col[data-done='true'].ind-before, .col[data-done='true'].ind-after { opacity: var(--done-opacity-active); }
+.col[data-done='true'].col-dragging { opacity: .4; }
+@media (prefers-reduced-motion: reduce) { .col[data-done='true'] { transition: none; } }
