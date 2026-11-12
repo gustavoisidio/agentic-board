@@ -277,6 +277,30 @@ export class Session {
     return { state: await this.refresh(), changed, failed };
   }
 
+  /**
+   * Reordena as colunas. `order` traz nomes exibidos ou chaves; vale a ordem pedida. Entradas desconhecidas ou repetidas
+   * são erro; colunas que existem mas não vieram (ex.: criadas por fora durante o arrasto) vão para o final.
+   * Mesma ordem que a atual: não grava nada.
+   */
+  async reorderColumns(order: unknown): Promise<BoardState> {
+    if (!Array.isArray(order) || order.length === 0 || !order.every((o) => typeof o === 'string')) {
+      throw new HttpError(400, 'Informe a ordem das colunas');
+    }
+    const state = this.current();
+    const byKey = new Map(state.columns.map((c) => [c.key, c]));
+    const wanted: string[] = [];
+    for (const entry of order as string[]) {
+      const key = statusKey(entry);
+      if (!byKey.has(key)) throw new HttpError(400, `Coluna inexistente: ${entry}`);
+      if (wanted.includes(key)) throw new HttpError(400, `Coluna repetida: ${entry}`);
+      wanted.push(key);
+    }
+    const final = [...wanted, ...state.columns.map((c) => c.key).filter((k) => !wanted.includes(k))];
+    if (final.every((k, i) => k === state.columns[i]!.key)) return state;
+    await this.persistColumns(final.map((k) => byKey.get(k)!.name));
+    return this.refresh();
+  }
+
   async deleteColumn(key: string): Promise<BoardState> {
     const state = this.current();
     const column = state.columns.find((c) => c.key === key);

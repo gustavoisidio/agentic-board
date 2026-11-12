@@ -14,7 +14,7 @@ const board: BoardState = {
 function setup(overrides: Partial<BoardState> = {}, onMove = vi.fn()) {
   const state = { ...board, ...overrides };
   const notify = vi.fn();
-  const utils = render(<Board board={state} unavailable={false} onLeave={() => undefined} onMove={onMove} onApply={() => undefined} notify={notify} />);
+  const utils = render(<Board board={state} unavailable={false} onLeave={() => undefined} onMove={onMove} onApply={() => undefined} onReorder={() => undefined} notify={notify} />);
   return { ...utils, state, onMove, notify };
 }
 
@@ -79,7 +79,7 @@ describe('modal da task', () => {
     const { rerender, notify, state } = setup();
     fireEvent.click(screen.getByRole('button', { name: /T-1: Primeira/ }));
     await screen.findByRole('dialog');
-    rerender(<Board board={{ ...state, tasks: [] }} unavailable={false} onLeave={() => undefined} onMove={() => undefined} onApply={() => undefined} notify={notify} />);
+    rerender(<Board board={{ ...state, tasks: [] }} unavailable={false} onLeave={() => undefined} onMove={() => undefined} onApply={() => undefined} onReorder={() => undefined} notify={notify} />);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(notify).toHaveBeenCalledWith('A task T-1 foi removida.');
   });

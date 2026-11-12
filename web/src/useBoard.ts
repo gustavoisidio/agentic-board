@@ -8,6 +8,7 @@ export type Phase = 'loading' | 'home' | 'board';
 export function useBoard(notify: (message: string) => void) {
   const [phase, setPhase] = useState<Phase>('loading');
   const [board, setBoard] = useState<BoardState | null>(null);
+  const [order, setOrder] = useState<string[] | null>(null); // ordem otimista das colunas (chaves) enquanto a API grava
   const [unavailable, setUnavailable] = useState(false);
   const [moves, setMoves] = useState<Record<string, { column: string; at: string }>>({}); // otimista: coluna e instante de entrada
   const notifyRef = useRef(notify);
@@ -75,6 +76,17 @@ export function useBoard(notify: (message: string) => void) {
   }
 
   // tasks e contagens já com os movimentos otimistas aplicados
+  async function reorder(keys: string[]) {
+    setOrder(keys);
+    try {
+      apply(await api.reorderColumns(keys));
+    } catch (error) {
+      notifyRef.current(`Não foi possível reordenar as colunas: ${error instanceof ApiError ? error.message : 'erro desconhecido'}`);
+    } finally {
+      setOrder(null);
+    }
+  }
+
   // movimentos otimistas aplicados; o card movido entra no fim da fila da coluna de destino
   const view = board && (() => {
     const tasks = board.tasks
@@ -83,9 +95,11 @@ export function useBoard(notify: (message: string) => void) {
     return {
       ...board,
       tasks,
-      columns: board.columns.map((c) => ({ ...c, count: tasks.reduce((n, t) => n + (t.column === c.key ? 1 : 0), 0) })),
+      columns: board.columns
+        .map((c) => ({ ...c, count: tasks.reduce((n, t) => n + (t.column === c.key ? 1 : 0), 0) }))
+        .sort((a, b) => (order ? order.indexOf(a.key) - order.indexOf(b.key) : 0)),
     };
   })();
 
-  return { phase, board: view, unavailable, open, leave, move, apply };
+  return { phase, board: view, unavailable, open, leave, move, reorder, apply };
 }

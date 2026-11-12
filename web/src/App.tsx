@@ -19,7 +19,7 @@ export function App() {
       {state.phase === 'loading' && <Skeleton />}
       {state.phase === 'home' && <Home onOpen={state.open} />}
       {state.phase === 'board' && state.board && (
-        <Board board={state.board} unavailable={state.unavailable} onLeave={state.leave} onMove={state.move} onApply={state.apply} notify={notify} />
+        <Board board={state.board} unavailable={state.unavailable} onLeave={state.leave} onMove={state.move} onReorder={state.reorder} onApply={state.apply} notify={notify} />
       )}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (

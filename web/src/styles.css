@@ -104,3 +104,12 @@ header h1 { font-size: 15px; margin: 0; }
 .chapter-3 > h4 button { font-weight: 500; }
 .chapter .chev { color: var(--muted); width: 1em; }
 .chapter [role='region'] { padding: 4px 4px 8px 22px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.col { position: relative; }
+.col-dragging { opacity: .4; }
+.col.ind-before::before, .col.ind-after::after { content: ''; position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 2px; background: var(--accent); }
+.col.ind-before::before { left: -9px; }
+.col.ind-after::after { right: -9px; }
+.grip { border: 0; background: none; padding: 0 4px 0 0; color: var(--muted); cursor: grab; font-size: 16px; line-height: 1; }
+.grip:active { cursor: grabbing; }

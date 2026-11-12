@@ -46,6 +46,7 @@ export const api = {
   task: (id: string) => request<TaskDetail>('GET', `/tasks/${encodeURIComponent(id)}`),
   moveTask: (id: string, status: string) => request<BoardState>('PATCH', `/tasks/${encodeURIComponent(id)}/status`, { status }),
   createColumn: (name: string) => request<BoardState>('POST', '/columns', { name }),
+  reorderColumns: (order: string[]) => request<BoardState>('PATCH', '/columns/order', { order }),
   renameColumn: (key: string, name: string) => request<RenameResult>('PATCH', `/columns/${encodeURIComponent(key)}`, { name }),
   deleteColumn: (key: string) => request<BoardState>('DELETE', `/columns/${encodeURIComponent(key)}`),
 };

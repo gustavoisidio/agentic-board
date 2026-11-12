@@ -28,6 +28,7 @@ agentic-board/
 | `GET /tasks/:id` | Conteúdo da task para o modal: `{ ...task, body, extra }` |
 | `PATCH /tasks/:id/status` `{ status }` | Reescreve o status no `.md` |
 | `POST /columns` `{ name }` | Cria coluna |
+| `PATCH /columns/order` `{ order }` | Reordena as colunas (nomes ou chaves); grava a ordem completa no `.board.json` |
 | `PATCH /columns/:key` `{ name }` | Renomeia (reescreve status das tasks) |
 | `DELETE /columns/:key` | Exclui coluna vazia (409 se tiver tasks) |
 | `GET /events` | SSE: `board-changed` com o estado novo (ou versão para refetch) |

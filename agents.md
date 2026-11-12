@@ -83,6 +83,7 @@ Todas sob `/api`, JSON, só em `127.0.0.1` (ou no IP da rede se o servidor subiu
 | `GET /tasks/:id` | Conteúdo da task: `{ ...task, body, extra }` (o que o modal mostra) |
 | `PATCH /tasks/:id/status` `{ status }` | Move a task |
 | `POST /columns` `{ name }` · `PATCH /columns/:key` · `DELETE /columns/:key` | Colunas |
+| `PATCH /columns/order` `{ order }` | Reordena colunas (só mexe no `.board.json`, nunca nos `.md`) |
 | `GET /events` | SSE: `board-changed`, `repo-unavailable`, `repo-closed` |
 
 `tasks[]`: `{ id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`.

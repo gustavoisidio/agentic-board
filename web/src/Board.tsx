@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { COLUMN_DRAG_TYPE, moveBy, moveColumn, type Side } from './columnOrder';
 import { TaskModal } from './TaskModal';
 import { api, ApiError, type BoardState, type Column as ColumnT, type Task } from './api';
 
@@ -8,13 +9,19 @@ interface Props {
   onLeave: () => void;
   onMove: (id: string, columnKey: string, columnName: string) => void;
   onApply: (state: BoardState) => void;
+  onReorder: (keys: string[]) => void;
   notify: (message: string) => void;
 }
 
-export function Board({ board, unavailable, onLeave, onMove, onApply, notify }: Props) {
+export function Board({ board, unavailable, onLeave, onMove, onApply, onReorder, notify }: Props) {
   const [newName, setNewName] = useState('');
   const [newError, setNewError] = useState('');
   const dragId = useRef<string | null>(null);
+  const [colDrag, setColDrag] = useState<{ key: string; target: string | null; side: Side } | null>(null);
+  const [announce, setAnnounce] = useState('');
+  const refocus = useRef<string | null>(null);
+  const main = useRef<HTMLElement>(null);
+  const keys = board.columns.map((c) => c.key);
   const [openId, setOpenId] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const openTask = openId ? board.tasks.find((t) => t.id === openId) : undefined;
@@ -63,6 +70,35 @@ export function Board({ board, unavailable, onLeave, onMove, onApply, notify }: 
     }
   }
 
+  function reorderTo(next: string[]) {
+    if (next !== keys) onReorder(next);
+  }
+
+  // teclado: Alt+seta esquerda/direita move a coluna uma posição e anuncia a nova posição
+  function moveWithKeyboard(column: ColumnT, delta: number) {
+    const next = moveBy(keys, column.key, delta);
+    if (next === keys) return;
+    refocus.current = column.key;
+    setAnnounce(`Coluna ${column.name} movida para a posição ${next.indexOf(column.key) + 1} de ${next.length}`);
+    onReorder(next);
+  }
+
+  useEffect(() => {
+    if (!refocus.current) return;
+    document.querySelector<HTMLElement>(`[data-grip="${CSS.escape(refocus.current)}"]`)?.focus();
+    refocus.current = null;
+  });
+
+  // rolagem horizontal automática perto das bordas durante qualquer arrasto
+  function autoScroll(e: React.DragEvent) {
+    const el = main.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const edge = 70;
+    if (e.clientX < rect.left + edge) el.scrollLeft -= 18;
+    else if (e.clientX > rect.right - edge) el.scrollLeft += 18;
+  }
+
   const tasksBy = (key: string) => board.tasks.filter((t) => t.column === key);
 
   return (
@@ -90,12 +126,23 @@ export function Board({ board, unavailable, onLeave, onMove, onApply, notify }: 
         <div className="warn" role="status">Nenhuma task encontrada em pastas <code>specs</code> ou <code>tasks</code></div>
       )}
 
-      <main className="board">
+      <div className="sr-only" role="status" aria-live="polite">{announce}</div>
+      <main className="board" ref={main} onDragOver={autoScroll}>
         {board.columns.map((column) => (
           <ColumnView
             key={column.key}
             column={column}
             tasks={tasksBy(column.key)}
+            dimmed={colDrag?.key === column.key}
+            indicator={colDrag?.target === column.key && colDrag.key !== column.key ? colDrag.side : null}
+            onGripStart={() => setColDrag({ key: column.key, target: null, side: 'after' })}
+            onGripEnd={() => setColDrag(null)}
+            onColumnOver={(side) => setColDrag((d) => (d && (d.target !== column.key || d.side !== side) ? { ...d, target: column.key, side } : d))}
+            onColumnDrop={(side, draggedKey) => {
+              setColDrag(null);
+              reorderTo(moveColumn(keys, draggedKey, column.key, side));
+            }}
+            onKeyboardMove={(delta) => moveWithKeyboard(column, delta)}
             onOpen={(id, el) => { opener.current = el; setOpenId(id); }}
             onDragStart={(id) => (dragId.current = id)}
             onDrop={() => {
@@ -133,6 +180,13 @@ function Ignored({ items }: { items: { file: string; reason: string }[] }) {
 interface ColumnProps {
   column: ColumnT;
   tasks: Task[];
+  dimmed: boolean;
+  indicator: Side | null;
+  onGripStart: () => void;
+  onGripEnd: () => void;
+  onColumnOver: (side: Side) => void;
+  onColumnDrop: (side: Side, draggedKey: string) => void;
+  onKeyboardMove: (delta: number) => void;
   onOpen: (id: string, el: HTMLElement) => void;
   onDragStart: (id: string) => void;
   onDrop: () => void;
@@ -140,7 +194,7 @@ interface ColumnProps {
   onDelete: () => void;
 }
 
-function ColumnView({ column, tasks, onOpen, onDragStart, onDrop, onRename, onDelete }: ColumnProps) {
+function ColumnView({ column, tasks, dimmed, indicator, onGripStart, onGripEnd, onColumnOver, onColumnDrop, onKeyboardMove, onOpen, onDragStart, onDrop, onRename, onDelete }: ColumnProps) {
   const [over, setOver] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
@@ -156,13 +210,50 @@ function ColumnView({ column, tasks, onOpen, onDragStart, onDrop, onRename, onDe
 
   return (
     <section
-      className={`col${over ? ' over' : ''}`}
+      className={`col${over ? ' over' : ''}${dimmed ? ' col-dragging' : ''}${indicator ? ` ind-${indicator}` : ''}`}
       aria-label={column.name}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragOver={(e) => {
+        if (isColumnDrag(e)) {
+          e.preventDefault(); // só colunas reordenam; o post-it nunca
+          onColumnOver(sideOf(e));
+          return;
+        }
+        e.preventDefault();
+        setOver(true);
+      }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
-      onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (isColumnDrag(e)) {
+          const draggedKey = e.dataTransfer.getData(COLUMN_DRAG_TYPE);
+          if (draggedKey) onColumnDrop(sideOf(e), draggedKey);
+          return;
+        }
+        onDrop();
+      }}
     >
       <div className="col-head">
+        <button
+          type="button"
+          className="grip"
+          data-grip={column.key}
+          draggable
+          title="Arraste para reordenar (Alt+setas move pelo teclado)"
+          aria-label={`Mover coluna ${column.name}`}
+          onDragStart={(e) => {
+            e.dataTransfer.setData(COLUMN_DRAG_TYPE, column.key);
+            e.dataTransfer.effectAllowed = 'move';
+            onGripStart();
+          }}
+          onDragEnd={onGripEnd}
+          onKeyDown={(e) => {
+            if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+              e.preventDefault();
+              onKeyboardMove(e.key === 'ArrowLeft' ? -1 : 1);
+            }
+          }}
+        >⠿</button>
         {editing ? (
           <input
             autoFocus
@@ -212,4 +303,12 @@ function ColumnView({ column, tasks, onOpen, onDragStart, onDrop, onRename, onDe
       {tasks.length === 0 && <div className="empty">Nenhuma task</div>}
     </section>
   );
+}
+
+const isColumnDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types ?? []).includes(COLUMN_DRAG_TYPE);
+
+/** Metade esquerda da coluna: insere antes; metade direita: depois. */
+function sideOf(e: React.DragEvent): Side {
+  const rect = e.currentTarget.getBoundingClientRect();
+  return e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
 }

@@ -30,6 +30,7 @@ const call = (method: string, url: string, body?: unknown, headers: Record<strin
   });
 
 const open = async () => (await call('POST', '/api/repo', { path: root })).json();
+const board = async () => (await call('GET', '/api/board')).json();
 const read = (rel: string) => readFile(path.join(root, rel), 'utf8');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -181,6 +182,79 @@ describe('colunas', () => {
   });
 });
 
+describe('ordem das colunas', () => {
+  const names = (b: { columns: { name: string }[] }) => b.columns.map((c) => c.name);
+  const order = (list: unknown) => call('PATCH', '/api/columns/order', { order: list });
+
+  it('reordena inclusive colunas derivadas de tasks e grava a ordem completa no .board.json, sem tocar nos .md', async () => {
+    await open();
+    const mdBefore = await Promise.all(['a', 'b', 'c'].map((f) => read(`specs/tasks/${f}.md`)));
+    const res = await order(['Em execução', 'Backlog']);
+    expect(res.status).toBe(200);
+    expect(names(await res.json())).toEqual(['Em execução', 'Backlog']);
+    expect(JSON.parse(await read('specs/.board.json'))).toEqual({ version: 1, columns: ['Em execução', 'Backlog'] });
+    expect(await Promise.all(['a', 'b', 'c'].map((f) => read(`specs/tasks/${f}.md`)))).toEqual(mdBefore);
+    await call('DELETE', '/api/repo');
+    expect(names(await open())).toEqual(['Em execução', 'Backlog']);
+  });
+
+  it('aceita chaves e nomes, inclusive colunas vazias', async () => {
+    await open();
+    await call('POST', '/api/columns', { name: 'Concluído' });
+    expect(names(await (await order(['concluido', 'EM EXECUCAO', 'Backlog'])).json())).toEqual(['Concluído', 'Em execução', 'Backlog']);
+  });
+
+  it('conjunto inválido: desconhecida, repetida, vazio ou formato errado dá 400 e nada muda', async () => {
+    await open();
+    expect((await order(['Backlog', 'Nada'])).status).toBe(400);
+    expect((await order(['Backlog', 'backlog'])).status).toBe(400);
+    expect((await order([])).status).toBe(400);
+    expect((await call('PATCH', '/api/columns/order', { order: 'Backlog' })).status).toBe(400);
+    expect(names(await board())).toEqual(['Backlog', 'Em execução']);
+    await expect(read('specs/.board.json')).rejects.toThrow();
+  });
+
+  it('coluna nova criada por fora durante o arrasto entra no final', async () => {
+    await open();
+    await put(root, 'specs/tasks/n.md', task('T-9', 'Nova'));
+    const res = await order(['Em execução', 'Backlog']);
+    expect(names(await res.json())).toEqual(['Em execução', 'Backlog', 'Nova']);
+  });
+
+  it('soltar na posição original não grava nada', async () => {
+    await open();
+    const res = await order(['Backlog', 'Em execução']);
+    expect(res.status).toBe(200);
+    await expect(read('specs/.board.json')).rejects.toThrow();
+  });
+
+  it('renomear mantém a posição, criar entra no final e a fila dos cards não muda', async () => {
+    await open();
+    const before = await board();
+    await order(['Em execução', 'Backlog']);
+    const renamed = await (await call('PATCH', '/api/columns/backlog', { name: 'A fazer' })).json();
+    expect(names(renamed.state)).toEqual(['Em execução', 'A fazer']);
+    const created = await (await call('POST', '/api/columns', { name: 'Feito' })).json();
+    expect(names(created)).toEqual(['Em execução', 'A fazer', 'Feito']);
+    const at = (b: { tasks: { id: string; enteredAt: string }[] }) => Object.fromEntries(b.tasks.map((t) => [t.id, t.enteredAt]));
+    expect(at(created)).toEqual(at(before));
+  });
+
+  it('emite board-changed para quem está conectado; o eco do watcher não repete; .board.json editado por fora reordena', async () => {
+    await open();
+    const events: string[] = [];
+    session.subscribe((e) => events.push(e.type));
+    await order(['Em execução', 'Backlog']);
+    expect(events).toEqual(['board-changed']);
+    await wait(600);
+    expect(events).toEqual(['board-changed']);
+    await writeFile(path.join(root, 'specs/.board.json'), JSON.stringify({ version: 1, columns: ['Backlog', 'Em execução'] }));
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && names(await board())[0] !== 'Backlog') await wait(50);
+    expect(names(await board())).toEqual(['Backlog', 'Em execução']);
+  });
+});
+
 describe('ignorados', () => {
   it('frontmatter sem status não vira card e aparece no aviso', async () => {
     await put(root, 'specs/tasks/rascunho.md', '---\nid: T-9\ntitle: Rascunho\n---\n');
@@ -257,7 +331,6 @@ describe('tempo real', () => {
 
 describe('fila por coluna (T-001)', () => {
   const ids = (state: { tasks: { id: string; column: string }[] }, column: string) => state.tasks.filter((t) => t.column === column).map((t) => t.id);
-  const board = async () => (await call('GET', '/api/board')).json();
 
   it('sem registro: estima pela data do arquivo, marcado estimated, e a ordem é do mais antigo para o mais novo', async () => {
     await utimes(path.join(root, 'specs/tasks/a.md'), new Date('2026-01-03T00:00:00Z'), new Date('2026-01-03T00:00:00Z'));

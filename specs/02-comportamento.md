@@ -83,3 +83,17 @@ Carregando (skeleton leve), vazio, erro de leitura por arquivo (vai para o aviso
 - Cada título é um botão com `aria-expanded` e `aria-controls`; Enter e Espaço alternam. O estado não é guardado entre aberturas do modal.
 - Títulos `#`, `##` ou `###` dentro de bloco de código (``` ou ~~~) não contam como capítulo. A sanitização do markdown (10) vale para cada trecho.
 
+## 11. Reordenar colunas
+
+Vale para qualquer coluna, inclusive as que existem só por causa das tasks e as vazias.
+
+- **Alça:** cada coluna tem uma alça de arrasto (ícone de grip, cursor `grab`) no cabeçalho. Só a alça inicia o arrasto da coluna, sem conflito com o arrasto dos post-its nem com o clique em renomear/excluir. Os dois arrastos são distinguidos pelo tipo de dado (`application/x-agentic-column` para coluna, `text/plain` para post-it): soltar uma coluna sobre outra nunca move task, e soltar um post-it sobre o cabeçalho (ou qualquer parte da coluna) move a task e nunca reordena.
+- **Durante o arrasto:** linha vertical na cor de destaque entre as colunas mostra onde a coluna cairá (metade esquerda da coluna alvo: antes; metade direita: depois); a coluna arrastada fica esmaecida. Soltar fora de uma coluna ou Esc cancela.
+- **Otimista:** a ordem muda na hora; a API grava; se falhar, volta à ordem anterior com toast de erro.
+- **Persistência:** a ordem completa (todas as colunas visíveis, inclusive as derivadas de tasks) vai para `specs/.board.json`, campo `columns`, em gravação atômica, sem tocar em nenhum `.md`. Soltar na posição original não grava nada.
+- **API:** `PATCH /api/columns/order` `{ order: [nomes exibidos ou chaves] }`. Entrada desconhecida, repetida ou lista vazia: 400. Colunas que existem mas não vieram na lista (ex.: criadas por fora durante o arrasto) são acrescentadas ao final, mantendo a ordem pedida. Mesma ordem que a atual: responde o estado sem gravar.
+- **Tempo real:** a mudança emite `board-changed` e as outras abas refletem; mudanças em `.board.json` feitas por fora também reordenam. O eco da própria gravação não gera novo evento (sem flicker).
+- **Teclado:** com foco na alça, Alt+seta esquerda/direita move a coluna uma posição; a nova posição é anunciada (`aria-live`: "Coluna X movida para a posição N de M"). O foco volta à alça.
+- **Rolagem horizontal:** ao arrastar perto das bordas do board, ele rola sozinho.
+- **Interação:** renomear mantém a posição; criar coluna continua entrando no final; a fila dos cards (seção 2) não muda ao reordenar colunas.
+

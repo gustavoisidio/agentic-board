@@ -106,6 +106,10 @@ export function createApp(options: AppOptions) {
     res.status(201).json(await session.createColumn(req.body?.name));
   }));
 
+  api.patch('/columns/order', wrap(async (req, res) => {
+    res.json(await session.reorderColumns(req.body?.order));
+  }));
+
   api.patch('/columns/:key', wrap(async (req, res) => {
     res.json(await session.renameColumn(String(req.params.key), req.body?.name));
   }));
