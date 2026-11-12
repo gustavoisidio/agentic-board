@@ -17,9 +17,21 @@ export function App() {
   return (
     <>
       {state.phase === 'loading' && <Skeleton />}
-      {state.phase === 'home' && <Home onOpen={state.open} />}
+      {state.phase === 'home' && <Home onOpen={state.addRepo} />}
       {state.phase === 'board' && state.board && (
-        <Board board={state.board} unavailable={state.unavailable} onLeave={state.leave} onMove={state.move} onReorder={state.reorder} onApply={state.apply} notify={notify} />
+        <Board
+          board={state.board}
+          onMove={state.move}
+          onReorder={state.reorder}
+          onApply={state.apply}
+          onToggleRepo={state.toggleRepo}
+          onOnlyRepo={state.onlyRepo}
+          onShowAll={state.showAll}
+          onAddRepo={state.addRepo}
+          onRemoveRepo={(id) => void state.removeRepo(id)}
+          onColor={(id, color) => void state.setColor(id, color)}
+          notify={notify}
+        />
       )}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (

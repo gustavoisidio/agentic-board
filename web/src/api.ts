@@ -1,16 +1,20 @@
-export interface Column { key: string; name: string; count: number }
-export interface Task { id: string; title: string; status: string; file: string; column: string; enteredAt: string | null; estimated?: true; rev?: string }
+export interface Column { key: string; name: string; count: number; total?: number }
+export interface Repo { repoId: string; name: string; path: string; color: string; count: number; available: boolean }
+export interface Task { id: string; repoId: string; title: string; status: string; file: string; column: string; enteredAt: string | null; estimated?: true; rev?: string }
 export interface TaskDetail extends Task { body: string; extra: Record<string, unknown> }
-export interface Ignored { file: string; reason: string }
+export interface Ignored { file: string; reason: string; repoId?: string }
 export interface BoardState {
-  repo: { path: string; name: string };
+  repos: Repo[];
   tasks: Task[];
   columns: Column[];
   ignored: Ignored[];
+  hidden: string[]; // repoIds ocultos por padrão (filtro lembrado do conjunto)
   configError?: string;
-  unavailable?: boolean;
 }
-export interface RenameResult { state: BoardState; changed: string[]; failed: { file: string; reason: string }[] }
+/** Identidade de um card: (repo, id). O mesmo id pode existir em repos diferentes. */
+export const taskKey = (t: { repoId: string; id: string }) => `${t.repoId}/${t.id}`;
+export const PALETTE = ['azul', 'teal', 'indigo', 'ambar', 'musgo', 'vinho', 'ardosia', 'cobre'] as const;
+export interface RenameResult { state: BoardState; changed: string[]; failed: { file: string; repoId: string; reason: string }[] }
 export interface Recent { path: string; name: string }
 
 export class ApiError extends Error {
@@ -40,11 +44,14 @@ export const api = {
   capabilities: () => request<{ pickFolder: boolean }>('GET', '/capabilities'),
   pickFolder: () => request<{ path?: string; cancelled?: boolean }>('POST', '/pick-folder'),
   recent: () => request<Recent[]>('GET', '/recent'),
-  openRepo: (path: string) => request<BoardState>('POST', '/repo', { path }),
-  closeRepo: () => request<void>('DELETE', '/repo'),
+  addRepo: (path: string) => request<BoardState>('POST', '/repos', { path }),
+  removeRepo: (repoId: string) => request<BoardState>('DELETE', `/repos/${encodeURIComponent(repoId)}`),
+  setColor: (repoId: string, color: string) => request<BoardState>('PUT', `/repos/${encodeURIComponent(repoId)}/color`, { color }),
+  setFilter: (hidden: string[]) => request<{ hidden: string[] }>('PUT', '/filter', { hidden }),
   board: () => request<BoardState>('GET', '/board'),
-  task: (id: string) => request<TaskDetail>('GET', `/tasks/${encodeURIComponent(id)}`),
-  moveTask: (id: string, status: string) => request<BoardState>('PATCH', `/tasks/${encodeURIComponent(id)}/status`, { status }),
+  task: (repoId: string, id: string) => request<TaskDetail>('GET', `/repos/${encodeURIComponent(repoId)}/tasks/${encodeURIComponent(id)}`),
+  moveTask: (repoId: string, id: string, status: string) =>
+    request<BoardState>('PATCH', `/repos/${encodeURIComponent(repoId)}/tasks/${encodeURIComponent(id)}/status`, { status }),
   createColumn: (name: string) => request<BoardState>('POST', '/columns', { name }),
   reorderColumns: (order: string[]) => request<BoardState>('PATCH', '/columns/order', { order }),
   renameColumn: (key: string, name: string) => request<RenameResult>('PATCH', `/columns/${encodeURIComponent(key)}`, { name }),

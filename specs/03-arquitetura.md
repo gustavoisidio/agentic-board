@@ -23,24 +23,28 @@ agentic-board/
 |---|---|
 | `POST /pick-folder` | Abre o seletor do Finder (`osascript -e 'POSIX path of (choose folder)'`); responde `{ path }` ou `{ cancelled: true }` |
 | `GET /recent` | Repositórios recentes |
-| `POST /repo` `{ path }` | Valida e abre o repo; adiciona aos recentes; inicia o watcher; responde o estado do board |
-| `GET /board` | Estado atual: `{ repo, tasks[], columns[], ignored[] }` |
-| `GET /tasks/:id` | Conteúdo da task para o modal: `{ ...task, body, extra }` |
-| `PATCH /tasks/:id/status` `{ status }` | Reescreve o status no `.md` |
+| `POST /repos` `{ path }` | Abre mais um repositório (409 se já aberto, comparando o caminho real); adiciona aos recentes; inicia scanner, fila e watcher próprios; responde o estado |
+| `DELETE /repos/:repoId` | Fecha o repo no board (nada muda em disco) |
+| `PUT /repos/:repoId/color` `{ color }` | Troca a cor (da paleta fixa) |
+| `PUT /filter` `{ hidden: [repoId] }` | Lembra o filtro como padrão inicial das abas do conjunto (400 se ocultar todos) |
+| `GET /board` | Estado: `{ repos[], tasks[], columns[], ignored[], hidden[] }` |
+| `GET /repos/:repoId/tasks/:id` | Conteúdo da task para o modal: `{ ...task, body, extra }` |
+| `PATCH /repos/:repoId/tasks/:id/status` `{ status }` | Reescreve o status no `.md` desse repo |
+| `POST /repo` `{ path }` · `DELETE /repo` · `GET /tasks/:id` · `PATCH /tasks/:id/status` | Rotas antigas (1 repo): `POST /repo` abre se ainda não estiver aberto; `DELETE /repo` fecha o único aberto (409 com vários); as de task valem quando o id é único entre os repos abertos (409 se repetido) |
 | `POST /columns` `{ name }` | Cria coluna |
 | `PATCH /columns/order` `{ order }` | Reordena as colunas (nomes ou chaves); grava a ordem completa no `.board.json` |
 | `PATCH /columns/:key` `{ name }` | Renomeia (reescreve status das tasks) |
 | `DELETE /columns/:key` | Exclui coluna vazia (409 se tiver tasks) |
-| `GET /events` | SSE: `board-changed` com o estado novo (ou versão para refetch) |
+| `GET /events` | SSE: `board-changed` com o estado novo (repos adicionados, removidos, indisponíveis, mudanças nos arquivos) |
 
-`tasks[]`: `{ id, title, status, file }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`. `ignored[]`: `{ file, reason }`.
+`repos[]`: `{ repoId, name, path, color, count, available }` (`repoId` = hash curto do caminho real). `tasks[]`: `{ repoId, id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo; um card é identificado por `(repoId, id)`). `columns[]`: `{ key, name, count }`. `ignored[]`: `{ repoId, file, reason }`.
 
 ## Segurança
 
 - Bind em loopback; checar `Host`/`Origin` para bloquear requisições de outras origens (evita que um site aberto no browser escreva nos seus arquivos).
 - Só ler/gravar arquivos `.md` dentro de pastas `specs`/`tasks` do repo aberto e `specs/.board.json`. Resolver caminhos reais e rejeitar qualquer um fora do repo (path traversal, symlinks para fora).
 - `/pick-folder` só funciona em macOS; em outros sistemas responde 501 e o front esconde o botão (campo de colar continua).
-- Recentes e config do app ficam em `~/.agentic-board/config.json`. A fila (instante de entrada de cada card na coluna) fica em `~/.agentic-board/queues/<hash do repo>.json`, fora do repositório.
+- Recentes e config do app ficam em `~/.agentic-board/config.json`, que também guarda os repos abertos e suas cores (reabertos ao iniciar), a ordem das colunas e o filtro padrão por conjunto de repos (modo multi-repo). A fila (instante de entrada de cada card na coluna) fica em `~/.agentic-board/queues/<hash do repo>.json`, fora do repositório.
 
 ## Módulos do servidor
 
@@ -48,6 +52,7 @@ agentic-board/
 - `frontmatter`: parse + extração do bloco; `rewriteStatus(content, newStatus)` linha-a-linha, preservando o resto.
 - `writer`: gravação atômica.
 - `queue`: lê/grava a fila por repositório (arquivo ilegível vale como vazio).
+- `repoSession`: um repo aberto (scanner, fila, watcher, leitura/gravação de tasks). `workspace`: todos os repos abertos, estado unificado, colunas, cores, filtro e eventos.
 - `board`: monta colunas (ordem, chaves normalizadas) a partir de tasks + `.board.json`.
 - `watcher`: chokidar + debounce + supressão do eco das próprias gravações.
 

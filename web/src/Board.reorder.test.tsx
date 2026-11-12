@@ -3,19 +3,21 @@ import { cleanup, createEvent, fireEvent, render, screen } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Board } from './Board';
 import type { BoardState } from './api';
+import { boardProps, makeView } from './testBoard';
 import { COLUMN_DRAG_TYPE } from './columnOrder';
 
 const board: BoardState = {
-  repo: { path: '/r/repo', name: 'repo' },
+  repos: [{ repoId: 'r1', name: 'repo', path: '/r/repo', color: 'azul', count: 1, available: true }],
+  hidden: [],
   columns: [{ key: 'a', name: 'A', count: 1 }, { key: 'b', name: 'B', count: 0 }, { key: 'c', name: 'C', count: 0 }],
-  tasks: [{ id: 'T-1', title: 'Primeira', status: 'A', file: 'specs/tasks/a.md', column: 'a', enteredAt: null }],
+  tasks: [{ repoId: 'r1', id: 'T-1', title: 'Primeira', status: 'A', file: 'specs/tasks/a.md', column: 'a', enteredAt: null }],
   ignored: [],
 };
 
 function setup() {
   const onMove = vi.fn();
   const onReorder = vi.fn();
-  render(<Board board={board} unavailable={false} onLeave={() => undefined} onMove={onMove} onApply={() => undefined} onReorder={onReorder} notify={() => undefined} />);
+  render(<Board board={makeView(board)} {...boardProps({ onMove, onReorder })} />);
   return { onMove, onReorder };
 }
 
@@ -90,7 +92,7 @@ describe('reordenar colunas', () => {
     dragAt('dragOver', target, taskDt, 80);
     expect(target.className).not.toContain('ind-');
     dragAt('drop', target, taskDt, 0);
-    expect(onMove).toHaveBeenCalledWith('T-1', 'b', 'B');
+    expect(onMove).toHaveBeenCalledWith('r1', 'T-1', 'b', 'B');
     expect(onReorder).not.toHaveBeenCalled();
   });
 

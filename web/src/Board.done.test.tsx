@@ -3,19 +3,21 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Board } from './Board';
 import type { BoardState } from './api';
+import { boardProps, makeView } from './testBoard';
 
 const base: BoardState = {
-  repo: { path: '/r/repo', name: 'repo' },
+  repos: [{ repoId: 'r1', name: 'repo', path: '/r/repo', color: 'azul', count: 2, available: true }],
+  hidden: [],
   columns: [{ key: 'a fazer', name: 'A fazer', count: 1 }, { key: 'concluido', name: 'Concluído', count: 1 }, { key: 'vazia', name: 'CONCLUIDO ', count: 0 }],
   tasks: [
-    { id: 'T-1', title: 'Aberta', status: 'A fazer', file: 'specs/tasks/a.md', column: 'a fazer', enteredAt: null },
-    { id: 'T-2', title: 'Feita', status: 'Concluído', file: 'specs/tasks/b.md', column: 'concluido', enteredAt: null },
+    { repoId: 'r1', id: 'T-1', title: 'Aberta', status: 'A fazer', file: 'specs/tasks/a.md', column: 'a fazer', enteredAt: null },
+    { repoId: 'r1', id: 'T-2', title: 'Feita', status: 'Concluído', file: 'specs/tasks/b.md', column: 'concluido', enteredAt: null },
   ],
   ignored: [],
 };
 
 const ui = (board: BoardState) => (
-  <Board board={board} unavailable={false} onLeave={() => undefined} onMove={() => undefined} onApply={() => undefined} onReorder={() => undefined} notify={() => undefined} />
+  <Board board={makeView(board)} {...boardProps()} />
 );
 const col = (name: string) => document.querySelector<HTMLElement>(`section[aria-label="${name}"]`)!;
 

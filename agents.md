@@ -58,12 +58,12 @@ Ao mover pelo board, o valor gravado é exatamente o nome exibido da coluna de d
 **Pela API local** (o servidor roda em `http://localhost:4400`; só aceita `Origin`/`Host` do próprio board):
 
 ```bash
-curl -X PATCH http://127.0.0.1:4400/api/tasks/T-001/status \
+curl -X PATCH http://127.0.0.1:4400/api/repos/<repoId>/tasks/T-001/status \
   -H 'Content-Type: application/json' \
   -d '{"status":"Em execução"}'
 ```
 
-A API exige que a coluna de destino já exista (400 caso contrário) e reescreve só a linha `status:`. Se a linha não puder ser localizada com segurança (status em bloco `|`, chave repetida, entre aspas na chave), responde erro e não toca no arquivo. Ela atua no repositório que estiver aberto no board, que é um só por servidor.
+A API exige que a coluna de destino já exista (400 caso contrário) e reescreve só a linha `status:`. Se a linha não puder ser localizada com segurança (status em bloco `|`, chave repetida, entre aspas na chave), responde erro e não toca no arquivo. O board pode ter vários repositórios abertos: descubra o `repoId` em `GET /api/board` (`repos[]`). A rota antiga `PATCH /api/tasks/:id/status` (sem repo) só vale se o id for único entre os repos abertos (409 caso contrário).
 
 Regras para o agente:
 
@@ -77,16 +77,18 @@ Todas sob `/api`, JSON, só em `127.0.0.1` (ou no IP da rede se o servidor subiu
 
 | Rota | Função |
 |---|---|
-| `POST /repo` `{ path }` | Abre o repositório (caminho absoluto) e devolve o estado |
-| `DELETE /repo` | Fecha o repositório |
-| `GET /board` | `{ repo, tasks[], columns[], ignored[] }` |
-| `GET /tasks/:id` | Conteúdo da task: `{ ...task, body, extra }` (o que o modal mostra) |
-| `PATCH /tasks/:id/status` `{ status }` | Move a task |
+| `POST /repos` `{ path }` | Abre mais um repositório (caminho absoluto); 409 se já aberto |
+| `DELETE /repos/:repoId` | Fecha o repo no board (nada muda em disco) |
+| `GET /board` | `{ repos[], tasks[], columns[], ignored[], hidden[] }` |
+| `GET /repos/:repoId/tasks/:id` | Conteúdo da task: `{ ...task, body, extra }` (o que o modal mostra) |
+| `PATCH /repos/:repoId/tasks/:id/status` `{ status }` | Move a task |
+| `PUT /repos/:repoId/color` · `PUT /filter` | Cor do repo e filtro padrão (de visualização) |
+| Rotas antigas | `POST /repo`, `DELETE /repo`, `GET /tasks/:id`, `PATCH /tasks/:id/status` seguem valendo com 1 repo (ou id único) |
 | `POST /columns` `{ name }` · `PATCH /columns/:key` · `DELETE /columns/:key` | Colunas |
-| `PATCH /columns/order` `{ order }` | Reordena colunas (só mexe no `.board.json`, nunca nos `.md`) |
-| `GET /events` | SSE: `board-changed`, `repo-unavailable`, `repo-closed` |
+| `PATCH /columns/order` `{ order }` | Reordena colunas (nunca mexe nos `.md`; grava no `.board.json` com 1 repo ou no config do app com vários) |
+| `GET /events` | SSE: `board-changed` (estado completo) |
 
-`tasks[]`: `{ id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo). `columns[]`: `{ key, name, count }`.
+`repos[]`: `{ repoId, name, path, color, count, available }`. `tasks[]`: `{ repoId, id, title, status, file, column, enteredAt, rev }` (`file` relativo ao repo; o card é `(repoId, id)`: o mesmo id pode existir em repos diferentes). `columns[]`: `{ key, name, count }`; as colunas são unificadas entre os repos.
 
 ## Padrão recomendado: task em capítulos
 
