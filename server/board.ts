@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from './writer.js';
 import { naturalCompare, statusKey } from './normalize.js';
+import type { Entered } from './queue.js';
 import type { Ignored, ScanResult, Task } from './scanner.js';
 
 export interface Column {
@@ -11,6 +12,8 @@ export interface Column {
 }
 export interface BoardTask extends Task {
   column: string; // chave normalizada da coluna
+  enteredAt: string | null; // quando entrou na coluna atual (fila); null se não se sabe
+  estimated?: true; // o instante veio da data do arquivo, não de um movimento visto pelo board
 }
 export interface BoardState {
   repo: { path: string; name: string };
@@ -51,8 +54,16 @@ export async function writeConfig(root: string, columns: string[]): Promise<void
   await atomicWrite(path.join(root, CONFIG_REL), JSON.stringify({ version: 1, columns }, null, 2) + '\n');
 }
 
+/** Fila: o mais antigo na coluna primeiro; empate por id natural; sem instante conhecido, no fim. */
+export function compareQueue(a: { id: string; file?: string; enteredAt: string | null }, b: { id: string; file?: string; enteredAt: string | null }): number {
+  const ta = a.enteredAt ? Date.parse(a.enteredAt) : Infinity;
+  const tb = b.enteredAt ? Date.parse(b.enteredAt) : Infinity;
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return naturalCompare(a.id, b.id) || naturalCompare(a.file ?? '', b.file ?? '');
+}
+
 /** Monta as colunas (ordem do .board.json, depois as vindas das tasks na ordem em que apareceram). */
-export function buildBoard(repoPath: string, scan: ScanResult, config: BoardConfig): BoardState {
+export function buildBoard(repoPath: string, scan: ScanResult, config: BoardConfig, entered: Entered = {}): BoardState {
   const names = new Map<string, string>(); // key -> nome exibido (primeira ocorrência)
   for (const name of config.columns) {
     const key = statusKey(name);
@@ -66,9 +77,11 @@ export function buildBoard(repoPath: string, scan: ScanResult, config: BoardConf
   const tasks: BoardTask[] = scan.tasks.map((t) => {
     const column = statusKey(t.status);
     counts.set(column, (counts.get(column) ?? 0) + 1);
-    return { ...t, column };
+    const entry = entered[t.id];
+    const known = entry && entry.column === column ? entry : null;
+    return { ...t, column, enteredAt: known?.at ?? null, ...(known?.estimated ? { estimated: true as const } : {}) };
   });
-  tasks.sort((a, b) => naturalCompare(a.id, b.id) || naturalCompare(a.file, b.file));
+  tasks.sort(compareQueue);
   const columns = [...names].map(([key, name]) => ({ key, name, count: counts.get(key) ?? 0 }));
   return {
     repo: { path: repoPath, name: path.basename(repoPath) || repoPath },

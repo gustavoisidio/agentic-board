@@ -4,7 +4,8 @@ import path from 'node:path';
 import { atomicWrite } from './writer.js';
 
 const MAX_RECENT = 10;
-const dir = () => process.env.AGENTIC_BOARD_HOME ?? path.join(os.homedir(), '.agentic-board');
+export const appDir = () => process.env.AGENTIC_BOARD_HOME ?? path.join(os.homedir(), '.agentic-board');
+const dir = appDir;
 const file = () => path.join(dir(), 'config.json');
 
 export async function readRecent(): Promise<string[]> {

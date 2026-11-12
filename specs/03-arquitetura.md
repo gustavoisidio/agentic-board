@@ -38,13 +38,14 @@ agentic-board/
 - Bind em loopback; checar `Host`/`Origin` para bloquear requisições de outras origens (evita que um site aberto no browser escreva nos seus arquivos).
 - Só ler/gravar arquivos `.md` dentro de pastas `specs`/`tasks` do repo aberto e `specs/.board.json`. Resolver caminhos reais e rejeitar qualquer um fora do repo (path traversal, symlinks para fora).
 - `/pick-folder` só funciona em macOS; em outros sistemas responde 501 e o front esconde o botão (campo de colar continua).
-- Recentes e config do app ficam em `~/.agentic-board/config.json`.
+- Recentes e config do app ficam em `~/.agentic-board/config.json`. A fila (instante de entrada de cada card na coluna) fica em `~/.agentic-board/queues/<hash do repo>.json`, fora do repositório.
 
 ## Módulos do servidor
 
 - `scanner`: percorre o repo, devolve tasks válidas e ignoradas.
 - `frontmatter`: parse + extração do bloco; `rewriteStatus(content, newStatus)` linha-a-linha, preservando o resto.
 - `writer`: gravação atômica.
+- `queue`: lê/grava a fila por repositório (arquivo ilegível vale como vazio).
 - `board`: monta colunas (ordem, chaves normalizadas) a partir de tasks + `.board.json`.
 - `watcher`: chokidar + debounce + supressão do eco das próprias gravações.
 

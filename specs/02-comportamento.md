@@ -18,7 +18,7 @@
 - Cabeçalho: nome, contador de tasks, e (no hover) renomear e excluir.
 - Coluna vazia mostra "Nenhuma task".
 
-**Post-it:** quadrado de bordas levemente arredondadas com `id` pequeno acima e `title`. Ordem dentro da coluna: por `id` (ordenação natural). Sem ordenação manual no MVP.
+**Post-it:** quadrado de bordas levemente arredondadas com `id` pequeno acima e `title`. Ordem dentro da coluna: **fila** — o card há mais tempo na coluna fica no topo e o mais recente na base; empate por `id` (ordenação natural); sem instante conhecido, no fim. Mover um card (ou mudar o `status` por fora) o coloca no fim da fila da coluna de destino; renomear a coluna não altera a fila. Sem ordenação manual no MVP. Detalhes em `tasks/T-001.md`.
 
 ## 3. Criar coluna
 

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFile, writeFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, rm, utimes, readdir } from 'node:fs/promises';
 import net from 'node:net';
 import type { Server } from 'node:http';
 import path from 'node:path';
@@ -252,6 +252,74 @@ describe('tempo real', () => {
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline && !events.includes('repo-unavailable')) await wait(100);
     expect(events).toContain('repo-unavailable');
+  });
+});
+
+describe('fila por coluna (T-001)', () => {
+  const ids = (state: { tasks: { id: string; column: string }[] }, column: string) => state.tasks.filter((t) => t.column === column).map((t) => t.id);
+  const board = async () => (await call('GET', '/api/board')).json();
+
+  it('sem registro: estima pela data do arquivo, marcado estimated, e a ordem é do mais antigo para o mais novo', async () => {
+    await utimes(path.join(root, 'specs/tasks/a.md'), new Date('2026-01-03T00:00:00Z'), new Date('2026-01-03T00:00:00Z'));
+    await utimes(path.join(root, 'specs/tasks/b.md'), new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+    const state = await open();
+    expect(ids(state, 'backlog')).toEqual(['T-2', 'T-1']);
+    expect(state.tasks.find((x: { id: string }) => x.id === 'T-2')).toMatchObject({ enteredAt: '2026-01-01T00:00:00.000Z', estimated: true });
+  });
+
+  it('mover grava o instante e o card vai para o fim da fila de destino', async () => {
+    await utimes(path.join(root, 'specs/tasks/c.md'), new Date('2026-01-01T00:00:00Z'), new Date('2026-01-01T00:00:00Z'));
+    await open();
+    const moved = await (await call('PATCH', '/api/tasks/T-1/status', { status: 'Em execução' })).json();
+    expect(ids(moved, 'em execucao')).toEqual(['T-3', 'T-1']);
+    const t1 = moved.tasks.find((x: { id: string }) => x.id === 'T-1');
+    expect(t1.estimated).toBeUndefined();
+    expect(Date.now() - Date.parse(t1.enteredAt)).toBeLessThan(5000);
+    await wait(20);
+    const second = await (await call('PATCH', '/api/tasks/T-2/status', { status: 'Em execução' })).json();
+    expect(ids(second, 'em execucao')).toEqual(['T-3', 'T-1', 'T-2']);
+  });
+
+  it('edição externa do status também entra no fim da fila', async () => {
+    await open();
+    await wait(20);
+    await writeFile(path.join(root, 'specs/tasks/a.md'), task('T-1', 'Em execução'));
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && !ids(await board(), 'em execucao').includes('T-1')) await wait(50);
+    expect(ids(await board(), 'em execucao')).toEqual(['T-3', 'T-1']);
+  });
+
+  it('renomear a coluna preserva o instante dos cards', async () => {
+    await utimes(path.join(root, 'specs/tasks/a.md'), new Date('2026-01-05T00:00:00Z'), new Date('2026-01-05T00:00:00Z'));
+    await utimes(path.join(root, 'specs/tasks/b.md'), new Date('2026-01-02T00:00:00Z'), new Date('2026-01-02T00:00:00Z'));
+    const before = await open();
+    const stamp = (s: { tasks: { id: string; enteredAt: string }[] }) => Object.fromEntries(s.tasks.map((x) => [x.id, x.enteredAt]));
+    const { state } = await (await call('PATCH', '/api/columns/backlog', { name: 'A fazer' })).json();
+    expect(stamp(state)).toEqual(stamp(before));
+    expect(ids(state, 'a fazer')).toEqual(['T-2', 'T-1']);
+  });
+
+  it('a fila fica fora do repo e sobrevive a reabrir', async () => {
+    await utimes(path.join(root, 'specs/tasks/a.md'), new Date('2026-01-03T00:00:00Z'), new Date('2026-01-03T00:00:00Z'));
+    await open();
+    await call('PATCH', '/api/tasks/T-1/status', { status: 'Em execução' });
+    const files = await readdir(path.join(process.env.AGENTIC_BOARD_HOME!, 'queues'));
+    expect(files).toHaveLength(1);
+    await call('DELETE', '/api/repo');
+    const again = await open();
+    expect(ids(again, 'em execucao')).toEqual(['T-3', 'T-1']);
+    expect(again.tasks.find((x: { id: string }) => x.id === 'T-1').estimated).toBeUndefined();
+    expect(await readdir(path.join(root, 'specs'))).not.toContain('queues');
+  });
+
+  it('arquivo de fila corrompido vale como ausente', async () => {
+    await open();
+    await call('DELETE', '/api/repo');
+    const dir = path.join(process.env.AGENTIC_BOARD_HOME!, 'queues');
+    for (const f of await readdir(dir)) await writeFile(path.join(dir, f), '{ quebrado');
+    const again = await open();
+    expect(again.tasks).toHaveLength(3);
+    expect(again.tasks.every((x: { estimated?: boolean }) => x.estimated)).toBe(true);
   });
 });
 

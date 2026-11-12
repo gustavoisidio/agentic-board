@@ -4,6 +4,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import { buildBoard, readConfig, writeConfig, type BoardState } from './board.js';
 import { rewriteStatus, RewriteError } from './frontmatter.js';
 import { statusKey } from './normalize.js';
+import { readQueue, writeQueue, type Entered } from './queue.js';
 import { assertInsideRepo, inTaskDir, isSkippedDir } from './paths.js';
 import { scanRepo } from './scanner.js';
 import { atomicWrite } from './writer.js';
@@ -22,6 +23,8 @@ const AVAILABILITY_MS = 2000;
 
 /** Repositório aberto: estado do board, watcher e assinantes do SSE. */
 export class Session {
+  constructor(private clock: () => Date = () => new Date()) {}
+
   private state: BoardState | null = null;
   private watcher: FSWatcher | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -30,6 +33,7 @@ export class Session {
   private dirty = false;
   private unavailable = false;
   private listeners = new Set<Listener>();
+  private entered: Entered = {};
   private realRoot = '';
   private root = '';
 
@@ -68,6 +72,7 @@ export class Session {
     this.root = input;
     this.realRoot = real;
     this.unavailable = false;
+    this.entered = await readQueue(real);
     this.state = await this.compute();
     this.startWatching();
     // quem já está com o board aberto (outra aba ou aparelho) precisa saber que o repositório mudou
@@ -95,7 +100,34 @@ export class Session {
 
   private async compute(): Promise<BoardState> {
     const [scan, config] = await Promise.all([scanRepo(this.realRoot), readConfig(this.realRoot)]);
-    return buildBoard(this.realRoot, scan, config);
+    await this.updateQueue(scan.tasks);
+    return buildBoard(this.realRoot, scan, config, this.entered);
+  }
+
+  /**
+   * Fila (T-001): sem registro, estima pela data do arquivo; se a task mudou de coluna desde o registro,
+   * a entrada é agora (movimento pela tela ou edição externa). Registros de tasks ausentes são mantidos.
+   */
+  private async updateQueue(tasks: { id: string; status: string; file: string }[]): Promise<void> {
+    let dirty = false;
+    for (const task of tasks) {
+      const column = statusKey(task.status);
+      const current = this.entered[task.id];
+      if (current?.column === column) continue;
+      dirty = true;
+      if (current) {
+        this.entered[task.id] = { column, at: this.clock().toISOString() };
+        continue;
+      }
+      try {
+        const stat = await fs.stat(path.join(this.realRoot, task.file));
+        const when = Number.isNaN(stat.mtimeMs) || stat.mtimeMs <= 0 ? stat.birthtime : stat.mtime;
+        this.entered[task.id] = { column, at: when.toISOString(), estimated: true };
+      } catch {
+        /* sem data legível: sem registro, o card fica no fim da fila */
+      }
+    }
+    if (dirty) await writeQueue(this.realRoot, this.entered);
   }
 
   /** Relê o disco; emite só se o estado realmente mudou (isso suprime o eco das próprias gravações). */
@@ -210,14 +242,19 @@ export class Session {
     const changed: string[] = [];
     const failed: { file: string; reason: string }[] = [];
     for (const task of state.tasks.filter((t) => t.column === key)) {
+      // renomear não é entrar na coluna: a chave do registro muda antes da gravação, para o watcher não ver "movimento"
+      const entry = this.entered[task.id];
+      if (entry && newKey !== key) entry.column = newKey;
       try {
         await this.writeTaskStatus(task.file, name);
         changed.push(task.file);
       } catch (error) {
+        if (entry && newKey !== key) entry.column = key;
         failed.push({ file: task.file, reason: toHttp(error).message });
       }
     }
     await this.persistColumns(state.columns.map((c) => (c.key === key ? name : c.name)));
+    await writeQueue(this.realRoot, this.entered);
     return { state: await this.refresh(), changed, failed };
   }
 
