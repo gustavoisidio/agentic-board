@@ -12,7 +12,7 @@ export interface AppConfig {
   recent: string[];
   repos: { path: string; color: string }[]; // repos abertos, na ordem, com a cor de cada um
   columns: Record<string, string[]>; // por conjunto de repos (modo multi-repo): ordem e colunas criadas à mão
-  filters: Record<string, string[]>; // por conjunto: repoIds ocultos (padrão inicial de cada aba)
+  selection: Record<string, string[]>; // por conjunto: repoIds selecionados (vazio = todos; padrão inicial de cada aba)
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -29,9 +29,9 @@ export async function readAppConfig(): Promise<AppConfig> {
       ? data.repos.filter((r): r is { path: string; color: string } => !!r && typeof (r as { path?: unknown }).path === 'string')
           .map((r) => ({ path: r.path, color: typeof r.color === 'string' ? r.color : '' }))
       : [];
-    return { recent: strings(data.recent), repos, columns: mapOfStrings(data.columns), filters: mapOfStrings(data.filters) };
+    return { recent: strings(data.recent), repos, columns: mapOfStrings(data.columns), selection: mapOfStrings(data.selection) };
   } catch {
-    return { recent: [], repos: [], columns: {}, filters: {} };
+    return { recent: [], repos: [], columns: {}, selection: {} };
   }
 }
 

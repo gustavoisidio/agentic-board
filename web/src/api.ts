@@ -8,7 +8,7 @@ export interface BoardState {
   tasks: Task[];
   columns: Column[];
   ignored: Ignored[];
-  hidden: string[]; // repoIds ocultos por padrão (filtro lembrado do conjunto)
+  selected: string[]; // repoIds selecionados por padrão (vazio = todos; lembrado por conjunto)
   configError?: string;
 }
 /** Identidade de um card: (repo, id). O mesmo id pode existir em repos diferentes. */
@@ -47,7 +47,7 @@ export const api = {
   addRepo: (path: string) => request<BoardState>('POST', '/repos', { path }),
   removeRepo: (repoId: string) => request<BoardState>('DELETE', `/repos/${encodeURIComponent(repoId)}`),
   setColor: (repoId: string, color: string) => request<BoardState>('PUT', `/repos/${encodeURIComponent(repoId)}/color`, { color }),
-  setFilter: (hidden: string[]) => request<{ hidden: string[] }>('PUT', '/filter', { hidden }),
+  setFilter: (selected: string[]) => request<{ selected: string[] }>('PUT', '/filter', { selected }),
   board: () => request<BoardState>('GET', '/board'),
   task: (repoId: string, id: string) => request<TaskDetail>('GET', `/repos/${encodeURIComponent(repoId)}/tasks/${encodeURIComponent(id)}`),
   moveTask: (repoId: string, id: string, status: string) =>

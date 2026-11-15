@@ -12,7 +12,7 @@ const state: BoardState = {
   columns: [{ key: 'a', name: 'A', count: 0 }, { key: 'b', name: 'B', count: 0 }],
   tasks: [t('r1', 'T-1', 'a', 'Do app'), t('r1', 'T-2', 'b'), t('r2', 'T-1', 'a', 'Da api')],
   ignored: [],
-  hidden: [],
+  selected: [],
 };
 
 afterEach(() => {
@@ -44,34 +44,41 @@ describe('chips', () => {
     render(<Board board={makeView(state)} {...boardProps()} />);
     const group = screen.getByRole('group', { name: 'Repositórios' });
     const app = within(group).getByRole('button', { name: /app2/ });
-    expect(app.getAttribute('aria-pressed')).toBe('true');
+    expect(app.getAttribute('aria-pressed')).toBe('false'); // sem seleção: todos os repos aparecem
+    expect(screen.queryByRole('button', { name: 'Todos' })).toBeNull();
     cleanup();
     render(<Board board={makeView({ ...state, repos: [state.repos[0]!], tasks: [t('r1', 'T-1', 'a')] })} {...boardProps()} />);
     expect(screen.getByRole('button', { name: 'Abrir outro repositório' })).toBeTruthy();
   });
 
-  it('filtro oculta os cards do repo; contador mostra "N tasks (de M)" e as colunas continuam', () => {
-    render(<Board board={makeView({ ...state, hidden: ['r2'] })} {...boardProps()} />);
+  it('seleção mostra só os cards do repo; contador "N tasks (de M)", colunas continuam e os outros chips ficam apagados', () => {
+    const { container } = render(<Board board={makeView({ ...state, selected: ['r2'] })} {...boardProps()} />);
     expect(screen.getAllByRole('button', { name: /T-1/ })).toHaveLength(1);
-    expect(screen.getByText(/2 tasks \(de 3\)/)).toBeTruthy();
+    expect(screen.getByText(/1 task \(de 3\)/)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'B' }) ?? null).toBeTruthy();
-    expect(screen.getByRole('button', { name: /api1/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /api1/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /app2/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(container.querySelectorAll('.chip.on')).toHaveLength(1);
+    expect(container.querySelectorAll('.chip.off')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Todos' })).toBeTruthy();
   });
 
-  it('clique alterna, "Só este" isola e o último ativo não alterna (com dica)', async () => {
-    const onToggle = vi.fn().mockReturnValue(false);
-    const onOnly = vi.fn();
-    render(<Board board={makeView(state)} {...boardProps({ onToggleRepo: onToggle, onOnlyRepo: onOnly })} />);
-    fireEvent.click(screen.getByRole('button', { name: /app2/ }));
-    await waitFor(() => expect(onToggle).toHaveBeenCalledWith('r1'));
-    expect(await screen.findAllByText('Mantenha ao menos um repositório visível.')).not.toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Mostrar só api' }));
-    expect(onOnly).toHaveBeenCalledWith('r2');
+  it('sem seleção nenhum chip fica apagado nem em destaque', () => {
+    const { container } = render(<Board board={makeView(state)} {...boardProps()} />);
+    expect(container.querySelectorAll('.chip.on, .chip.off')).toHaveLength(0);
+  });
+
+  it('clicar no chip chama onToggleRepo; "Todos" chama onShowAll; "Só este" e duplo clique não existem mais', () => {
+    const onToggle = vi.fn();
+    const onShowAll = vi.fn();
+    render(<Board board={makeView({ ...state, selected: ['r1'] })} {...boardProps({ onToggleRepo: onToggle, onShowAll })} />);
+    fireEvent.click(screen.getByRole('button', { name: /api1/ }));
+    expect(onToggle).toHaveBeenCalledWith('r2');
+    fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
+    expect(onShowAll).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Mostrar só/ })).toBeNull();
     fireEvent.doubleClick(screen.getByRole('button', { name: /app2/ }));
-    fireEvent.click(screen.getByRole('button', { name: /app2/ }));
-    fireEvent.click(screen.getByRole('button', { name: /app2/ }));
-    await waitFor(() => expect(onOnly).toHaveBeenCalledWith('r1'));
+    expect(onToggle).toHaveBeenCalledTimes(1 + 0); // o duplo clique não isola nada
   });
 
   it('trocar a cor pelo seletor e remover pelo x', () => {
@@ -110,8 +117,8 @@ describe('renomear e modal', () => {
     expect(confirmText(1, [tasks[0]!], [state.repos[0]!])).toBe('Isso altera o status em 1 arquivo. Continuar?');
   });
 
-  it('excluir considera todos os repos, mesmo ocultos pelo filtro', () => {
-    render(<Board board={makeView({ ...state, hidden: ['r2'], tasks: [t('r2', 'T-9', 'b')] })} {...boardProps()} />);
+  it('excluir considera todos os repos, mesmo fora da seleção', () => {
+    render(<Board board={makeView({ ...state, selected: ['r1'], tasks: [t('r2', 'T-9', 'b')] })} {...boardProps()} />);
     expect((screen.getByRole('button', { name: 'Excluir B' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -135,29 +142,43 @@ describe('useBoard: filtro por aba', () => {
   }
   beforeEach(() => {
     vi.stubGlobal('EventSource', FakeSource);
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(String(url).includes('/filter') ? { hidden: [] } : state), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(String(url).includes('/filter') ? { selected: [] } : state), { status: 200 })));
   });
 
-  it('não deixa ocultar o último repo ativo e "Todos" restaura', async () => {
+  it('regra da seleção: nada = todos; seleciona um; soma outro; remove; o último removido volta a todos; "Todos" limpa', async () => {
     const { result } = renderHook(() => useBoard(() => undefined));
     await waitFor(() => expect(result.current.board).not.toBeNull());
-    let ok = true;
-    act(() => { ok = result.current.toggleRepo('r1'); });
-    expect(ok).toBe(true);
-    expect(result.current.board!.hidden).toEqual(['r1']);
-    act(() => { ok = result.current.toggleRepo('r2'); });
-    expect(ok).toBe(false);
-    expect(result.current.board!.hidden).toEqual(['r1']);
-    act(() => result.current.onlyRepo('r1'));
-    expect(result.current.board!.hidden).toEqual(['r2']);
+    const ids = () => [...new Set(result.current.board!.tasks.map((x) => x.repoId))].sort();
+    expect(result.current.board!.selected).toEqual([]);
+    expect(ids()).toEqual(['r1', 'r2']);
+    act(() => result.current.toggleRepo('r1'));
+    expect(result.current.board!.selected).toEqual(['r1']);
+    expect(ids()).toEqual(['r1']);
+    act(() => result.current.toggleRepo('r2'));
+    expect(result.current.board!.selected).toEqual(['r1', 'r2']);
+    expect(ids()).toEqual(['r1', 'r2']);
+    act(() => result.current.toggleRepo('r1'));
+    expect(ids()).toEqual(['r2']);
+    act(() => result.current.toggleRepo('r2'));
+    expect(result.current.board!.selected).toEqual([]);
+    expect(ids()).toEqual(['r1', 'r2']);
+    act(() => result.current.toggleRepo('r1'));
     act(() => result.current.showAll());
-    expect(result.current.board!.hidden).toEqual([]);
+    expect(result.current.board!.selected).toEqual([]);
+  });
+
+  it('cada mudança grava a seleção por PUT /filter', async () => {
+    const { result } = renderHook(() => useBoard(() => undefined));
+    await waitFor(() => expect(result.current.board).not.toBeNull());
+    act(() => result.current.toggleRepo('r2'));
+    const put = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([u, init]) => String(u).includes('/filter') && init?.method === 'PUT');
+    expect(JSON.parse(put![1].body)).toEqual({ selected: ['r2'] });
   });
 
   it('o filtro padrão lembrado vira o estado inicial da aba', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...state, hidden: ['r2'] }), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...state, selected: ['r2'] }), { status: 200 })));
     const { result } = renderHook(() => useBoard(() => undefined));
-    await waitFor(() => expect(result.current.board?.hidden).toEqual(['r2']));
-    expect(result.current.board!.tasks.every((x) => x.repoId === 'r1')).toBe(true);
+    await waitFor(() => expect(result.current.board?.selected).toEqual(['r2']));
+    expect(result.current.board!.tasks.every((x) => x.repoId === 'r2')).toBe(true);
   });
 });

@@ -95,7 +95,7 @@ export function createApp(options: AppOptions) {
     res.json(await session.setColor(String(req.params.repoId), req.body?.color));
   }));
   api.put('/filter', wrap(async (req, res) => {
-    res.json({ hidden: await session.setFilter(req.body?.hidden) });
+    res.json({ selected: await session.setFilter(req.body?.selected) });
   }));
 
   // rotas antigas (1 repo): POST /repo abre se ainda não estiver aberto; DELETE /repo fecha o único repo aberto

@@ -565,15 +565,28 @@ describe('vários repositórios', () => {
     expect((await call('DELETE', '/api/columns/vazia')).status).toBe(200);
   });
 
-  it('filtro: lembrado por conjunto; não deixa ocultar todos', async () => {
+  it('filtro: seleção lembrada por conjunto (vazia = todos), sem 400 por selecionar todos', async () => {
     await open();
     const state = await (await add(second)).json();
     const [r1, r2] = state.repos as { repoId: string }[];
-    expect((await call('PUT', '/api/filter', { hidden: [r2!.repoId] })).status).toBe(200);
-    expect((await board()).hidden).toEqual([r2!.repoId]);
-    expect((await call('PUT', '/api/filter', { hidden: [r1!.repoId, r2!.repoId] })).status).toBe(400);
-    expect((await call('PUT', '/api/filter', { hidden: 'x' })).status).toBe(400);
-    expect((await board()).hidden).toEqual([r2!.repoId]);
+    expect((await call('PUT', '/api/filter', { selected: [r2!.repoId] })).status).toBe(200);
+    expect((await board()).selected).toEqual([r2!.repoId]);
+    expect((await call('PUT', '/api/filter', { selected: [r1!.repoId, r2!.repoId] })).status).toBe(200); // todos selecionados é válido
+    expect((await call('PUT', '/api/filter', { selected: [] })).status).toBe(200);
+    expect((await board()).selected).toEqual([]);
+    expect((await call('PUT', '/api/filter', { selected: [r2!.repoId] })).status).toBe(200);
+    expect((await call('PUT', '/api/filter', { selected: 'x' })).status).toBe(400);
+    expect((await board()).selected).toEqual([r2!.repoId]);
+  });
+
+  it('repo selecionado que é fechado sai da seleção', async () => {
+    await open();
+    const state = await (await add(second)).json();
+    const [, r2] = state.repos as { repoId: string }[];
+    await call('PUT', '/api/filter', { selected: [r2!.repoId] });
+    const after = await (await call('DELETE', `/api/repos/${r2!.repoId}`)).json();
+    expect(after.selected).toEqual([]);
+    expect((await board()).selected).toEqual([]);
   });
 
   it('remover um repo só fecha no board: nada muda em disco', async () => {

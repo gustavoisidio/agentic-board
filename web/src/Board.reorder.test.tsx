@@ -8,7 +8,7 @@ import { COLUMN_DRAG_TYPE } from './columnOrder';
 
 const board: BoardState = {
   repos: [{ repoId: 'r1', name: 'repo', path: '/r/repo', color: 'azul', count: 1, available: true }],
-  hidden: [],
+  selected: [],
   columns: [{ key: 'a', name: 'A', count: 1 }, { key: 'b', name: 'B', count: 0 }, { key: 'c', name: 'C', count: 0 }],
   tasks: [{ repoId: 'r1', id: 'T-1', title: 'Primeira', status: 'A', file: 'specs/tasks/a.md', column: 'a', enteredAt: null }],
   ignored: [],

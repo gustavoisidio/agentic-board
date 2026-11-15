@@ -14,8 +14,8 @@ type Listener = (event: WorkspaceEvent) => void;
 /** Repos abertos ao mesmo tempo: estado unificado do board, colunas por status, cores, filtro e eventos em tempo real. */
 export class Workspace {
   private repos: RepoSession[] = [];
-  private cfg: AppConfig = { recent: [], repos: [], columns: {}, filters: {}, };
-  private state: BoardState = { repos: [], tasks: [], columns: [], ignored: [], hidden: [] };
+  private cfg: AppConfig = { recent: [], repos: [], columns: {}, selection: {} };
+  private state: BoardState = { repos: [], tasks: [], columns: [], ignored: [], selected: [] };
   private listeners = new Set<Listener>();
   private chain: Promise<unknown> = Promise.resolve();
   private ready: Promise<void> | null = null;
@@ -53,7 +53,7 @@ export class Workspace {
   async close(): Promise<void> {
     await Promise.all(this.repos.map((r) => r.stop()));
     this.repos = [];
-    this.state = { repos: [], tasks: [], columns: [], ignored: [], hidden: [] };
+    this.state = { repos: [], tasks: [], columns: [], ignored: [], selected: [] };
   }
 
   // ---- estado ------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export class Workspace {
 
   private async compute(): Promise<BoardState> {
     const names = this.names();
-    const hidden = (this.cfg.filters[this.setKey()] ?? []).filter((id) => this.repos.some((r) => r.id === id));
+    const selected = (this.cfg.selection[this.setKey()] ?? []).filter((id) => this.repos.some((r) => r.id === id));
     return buildBoard(
       this.repos.map((r) => ({
         info: { repoId: r.id, name: names.get(r.id)!, path: r.path, color: this.colorOf(r), available: r.available },
@@ -114,7 +114,7 @@ export class Workspace {
         entered: r.entered,
       })),
       await this.columnConfig(),
-      hidden,
+      selected,
     );
   }
 
@@ -209,16 +209,15 @@ export class Workspace {
     return this.refresh();
   }
 
-  /** Filtro de repos: padrão inicial das abas (lembrado por conjunto de repos). Não emite: o filtro é por aba. */
-  async setFilter(hidden: unknown): Promise<string[]> {
-    if (!Array.isArray(hidden) || !hidden.every((h) => typeof h === 'string')) throw new HttpError(400, 'Informe os repositórios ocultos');
-    const ids = [...new Set(hidden as string[])].filter((id) => this.repos.some((r) => r.id === id));
-    if (this.repos.length > 0 && ids.length >= this.repos.length) throw new HttpError(400, 'Mantenha ao menos um repositório visível');
+  /** Seleção de repos (vazia = todos): padrão inicial das abas, lembrado por conjunto de repos. Não emite: a seleção é por aba. */
+  async setFilter(selected: unknown): Promise<string[]> {
+    if (!Array.isArray(selected) || !selected.every((h) => typeof h === 'string')) throw new HttpError(400, 'Informe os repositórios selecionados');
+    const ids = [...new Set(selected as string[])].filter((id) => this.repos.some((r) => r.id === id));
     const key = this.setKey();
-    this.cfg.filters[key] = ids;
-    this.state = { ...this.state, hidden: ids }; // sem emitir: o filtro é por aba
+    this.cfg.selection[key] = ids;
+    this.state = { ...this.state, selected: ids };
     await updateAppConfig((c) => {
-      c.filters[key] = ids;
+      c.selection[key] = ids;
     });
     return ids;
   }

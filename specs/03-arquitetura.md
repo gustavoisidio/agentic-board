@@ -26,8 +26,8 @@ agentic-board/
 | `POST /repos` `{ path }` | Abre mais um repositório (409 se já aberto, comparando o caminho real); adiciona aos recentes; inicia scanner, fila e watcher próprios; responde o estado |
 | `DELETE /repos/:repoId` | Fecha o repo no board (nada muda em disco) |
 | `PUT /repos/:repoId/color` `{ color }` | Troca a cor (da paleta fixa) |
-| `PUT /filter` `{ hidden: [repoId] }` | Lembra o filtro como padrão inicial das abas do conjunto (400 se ocultar todos) |
-| `GET /board` | Estado: `{ repos[], tasks[], columns[], ignored[], hidden[] }` |
+| `PUT /filter` `{ selected: [repoId] }` | Lembra a seleção de repos (vazio = todos) como padrão inicial das abas do conjunto; ids de repos fechados são descartados; nunca 400 por selecionar todos (400 só se o corpo não for uma lista) |
+| `GET /board` | Estado: `{ repos[], tasks[], columns[], ignored[], selected[] }` |
 | `GET /repos/:repoId/tasks/:id` | Conteúdo da task para o modal: `{ ...task, body, extra }` |
 | `PATCH /repos/:repoId/tasks/:id/status` `{ status }` | Reescreve o status no `.md` desse repo |
 | `POST /repo` `{ path }` · `DELETE /repo` · `GET /tasks/:id` · `PATCH /tasks/:id/status` | Rotas antigas (1 repo): `POST /repo` abre se ainda não estiver aberto; `DELETE /repo` fecha o único aberto (409 com vários); as de task valem quando o id é único entre os repos abertos (409 se repetido) |
@@ -44,7 +44,7 @@ agentic-board/
 - Bind em loopback; checar `Host`/`Origin` para bloquear requisições de outras origens (evita que um site aberto no browser escreva nos seus arquivos).
 - Só ler/gravar arquivos `.md` dentro de pastas `specs`/`tasks` do repo aberto e `specs/.board.json`. Resolver caminhos reais e rejeitar qualquer um fora do repo (path traversal, symlinks para fora).
 - `/pick-folder` só funciona em macOS; em outros sistemas responde 501 e o front esconde o botão (campo de colar continua).
-- Recentes e config do app ficam em `~/.agentic-board/config.json`, que também guarda os repos abertos e suas cores (reabertos ao iniciar), a ordem das colunas e o filtro padrão por conjunto de repos (modo multi-repo). A fila (instante de entrada de cada card na coluna) fica em `~/.agentic-board/queues/<hash do repo>.json`, fora do repositório.
+- Recentes e config do app ficam em `~/.agentic-board/config.json`, que também guarda os repos abertos e suas cores (reabertos ao iniciar), a ordem das colunas e a seleção padrão de repos por conjunto (`selection`) (modo multi-repo). A fila (instante de entrada de cada card na coluna) fica em `~/.agentic-board/queues/<hash do repo>.json`, fora do repositório.
 
 ## Módulos do servidor
 

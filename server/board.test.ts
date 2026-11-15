@@ -40,7 +40,7 @@ describe('buildBoard', () => {
   it('expõe repos, ignorados com repoId e o erro de config', () => {
     const data: RepoData = { info: info('r1', 'repo'), scan: { tasks: [t('T-1', 'A')], ignored: [{ file: 'a.md', reason: 'x' }] }, entered: {} };
     const b = buildBoard([data], { columns: [], error: 'ruim' }, ['r2']);
-    expect(b).toMatchObject({ repos: [{ repoId: 'r1', name: 'repo', count: 1, available: true }], ignored: [{ file: 'a.md', reason: 'x', repoId: 'r1' }], hidden: ['r2'], configError: 'ruim' });
+    expect(b).toMatchObject({ repos: [{ repoId: 'r1', name: 'repo', count: 1, available: true }], ignored: [{ file: 'a.md', reason: 'x', repoId: 'r1' }], selected: ['r2'], configError: 'ruim' });
   });
 });
 

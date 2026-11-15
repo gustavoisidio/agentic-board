@@ -25,7 +25,6 @@ export function App() {
           onReorder={state.reorder}
           onApply={state.apply}
           onToggleRepo={state.toggleRepo}
-          onOnlyRepo={state.onlyRepo}
           onShowAll={state.showAll}
           onAddRepo={state.addRepo}
           onRemoveRepo={(id) => void state.removeRepo(id)}

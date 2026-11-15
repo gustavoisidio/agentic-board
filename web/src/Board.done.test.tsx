@@ -7,7 +7,7 @@ import { boardProps, makeView } from './testBoard';
 
 const base: BoardState = {
   repos: [{ repoId: 'r1', name: 'repo', path: '/r/repo', color: 'azul', count: 2, available: true }],
-  hidden: [],
+  selected: [],
   columns: [{ key: 'a fazer', name: 'A fazer', count: 1 }, { key: 'concluido', name: 'Concluído', count: 1 }, { key: 'vazia', name: 'CONCLUIDO ', count: 0 }],
   tasks: [
     { repoId: 'r1', id: 'T-1', title: 'Aberta', status: 'A fazer', file: 'specs/tasks/a.md', column: 'a fazer', enteredAt: null },

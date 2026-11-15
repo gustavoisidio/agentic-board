@@ -3,15 +3,15 @@ import type { BoardView } from './useBoard';
 
 export const repo = (repoId = 'r1', name = 'repo', color = 'azul', extra: Partial<Repo> = {}): Repo => ({ repoId, name, path: `/x/${name}`, color, count: 0, available: true, ...extra });
 
-/** Monta o BoardView que o Board recebe (tasks filtradas por `hidden`, contadores e totais calculados). */
+/** Monta o BoardView que o Board recebe (tasks filtradas por `selected`, contadores e totais calculados). */
 export function makeView(state: Partial<BoardState> & { tasks: Task[]; columns: { key: string; name: string; count: number }[] }): BoardView {
-  const hidden = state.hidden ?? [];
-  const shown = state.tasks.filter((t) => !hidden.includes(t.repoId));
+  const selected = state.selected ?? [];
+  const shown = selected.length === 0 ? state.tasks : state.tasks.filter((t) => selected.includes(t.repoId));
   return {
     repos: state.repos ?? [repo()],
     ignored: state.ignored ?? [],
     configError: state.configError,
-    hidden,
+    selected,
     allTasks: state.tasks,
     totalTasks: state.tasks.length,
     tasks: shown,
@@ -27,8 +27,7 @@ export const boardProps = (over: Record<string, unknown> = {}) => ({
   onMove: () => undefined,
   onApply: () => undefined,
   onReorder: () => undefined,
-  onToggleRepo: () => true,
-  onOnlyRepo: () => undefined,
+  onToggleRepo: () => undefined,
   onShowAll: () => undefined,
   onAddRepo: async () => undefined,
   onRemoveRepo: () => undefined,

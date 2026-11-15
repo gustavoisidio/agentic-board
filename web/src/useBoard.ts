@@ -5,8 +5,8 @@ import { compareQueue } from './queue';
 export type Phase = 'loading' | 'home' | 'board';
 
 /** O que a tela mostra: tasks já filtradas por repo (`tasks`) e a lista completa (`allTasks`). */
-export interface BoardView extends Omit<BoardState, 'hidden'> {
-  hidden: string[]; // filtro desta aba
+export interface BoardView extends Omit<BoardState, 'selected'> {
+  selected: string[]; // seleção desta aba (vazia = todos os repos)
   allTasks: Task[];
   totalTasks: number;
   columns: (Column & { total: number })[];
@@ -16,7 +16,7 @@ export interface BoardView extends Omit<BoardState, 'hidden'> {
 export function useBoard(notify: (message: string) => void) {
   const [phase, setPhase] = useState<Phase>('loading');
   const [board, setBoard] = useState<BoardState | null>(null);
-  const [hidden, setHidden] = useState<string[] | null>(null); // filtro desta aba (começa no padrão lembrado)
+  const [selected, setSelected] = useState<string[] | null>(null); // seleção desta aba (começa no padrão lembrado)
   const [order, setOrder] = useState<string[] | null>(null); // ordem otimista das colunas (chaves) enquanto a API grava
   const [moves, setMoves] = useState<Record<string, { column: string; at: string }>>({}); // otimista: coluna e instante de entrada
   const notifyRef = useRef(notify);
@@ -24,7 +24,7 @@ export function useBoard(notify: (message: string) => void) {
 
   const apply = useCallback((state: BoardState) => {
     setBoard(state);
-    setHidden((current) => (current === null ? state.hidden : current.filter((id) => state.repos.some((r) => r.repoId === id))));
+    setSelected((current) => (current === null ? state.selected : current.filter((id) => state.repos.some((r) => r.repoId === id))));
     setPhase(state.repos.length === 0 ? 'home' : 'board');
   }, []);
 
@@ -74,28 +74,17 @@ export function useBoard(notify: (message: string) => void) {
     }
   }
 
-  // ---- filtro de repos (por aba; o último ativo não alterna) ----
+  // ---- filtro de repos (por aba): nenhum selecionado = todos; clicar seleciona/remove; "Todos" limpa ----
   const saveFilter = (next: string[]) => void api.setFilter(next).catch(() => undefined);
-  const visibleIds = board && hidden ? board.repos.filter((r) => !hidden.includes(r.repoId)).map((r) => r.repoId) : [];
 
-  /** Alterna um repo; devolve false quando seria ocultar o último ativo (nada muda). */
-  function toggleRepo(repoId: string): boolean {
-    if (!board || !hidden) return false;
-    const isHidden = hidden.includes(repoId);
-    if (!isHidden && visibleIds.length <= 1) return false;
-    const next = isHidden ? hidden.filter((id) => id !== repoId) : [...hidden, repoId];
-    setHidden(next);
-    saveFilter(next);
-    return true;
-  }
-  function onlyRepo(repoId: string) {
-    if (!board) return;
-    const next = board.repos.filter((r) => r.repoId !== repoId).map((r) => r.repoId);
-    setHidden(next);
+  function toggleRepo(repoId: string) {
+    if (!board || !selected) return;
+    const next = selected.includes(repoId) ? selected.filter((id) => id !== repoId) : [...selected, repoId];
+    setSelected(next);
     saveFilter(next);
   }
   function showAll() {
-    setHidden([]);
+    setSelected([]);
     saveFilter([]);
   }
 
@@ -126,14 +115,14 @@ export function useBoard(notify: (message: string) => void) {
   }
 
   // movimentos otimistas aplicados; o card movido entra no fim da fila da coluna de destino
-  const view: BoardView | null = board && hidden && (() => {
+  const view: BoardView | null = board && selected && (() => {
     const all = board.tasks
       .map((t) => (moves[taskKey(t)] ? { ...t, column: moves[taskKey(t)]!.column, enteredAt: moves[taskKey(t)]!.at } : t))
       .sort(compareQueue);
-    const shown = all.filter((t) => !hidden.includes(t.repoId));
+    const shown = selected.length === 0 ? all : all.filter((t) => selected.includes(t.repoId));
     return {
       ...board,
-      hidden,
+      selected,
       tasks: shown,
       allTasks: all,
       totalTasks: all.length,
@@ -147,5 +136,5 @@ export function useBoard(notify: (message: string) => void) {
     };
   })();
 
-  return { phase, board: view, addRepo, removeRepo, setColor, toggleRepo, onlyRepo, showAll, move, reorder, apply };
+  return { phase, board: view, addRepo, removeRepo, setColor, toggleRepo, showAll, move, reorder, apply };
 }

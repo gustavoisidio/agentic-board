@@ -11,8 +11,7 @@ interface Props {
   onMove: (repoId: string, id: string, columnKey: string, columnName: string) => void;
   onApply: (state: BoardState) => void;
   onReorder: (keys: string[]) => void;
-  onToggleRepo: (repoId: string) => boolean;
-  onOnlyRepo: (repoId: string) => void;
+  onToggleRepo: (repoId: string) => void;
   onShowAll: () => void;
   onAddRepo: (path: string) => Promise<void>;
   onRemoveRepo: (repoId: string) => void;
@@ -20,7 +19,7 @@ interface Props {
   notify: (message: string) => void;
 }
 
-export function Board({ board, onMove, onApply, onReorder, onToggleRepo, onOnlyRepo, onShowAll, onAddRepo, onRemoveRepo, onColor, notify }: Props) {
+export function Board({ board, onMove, onApply, onReorder, onToggleRepo, onShowAll, onAddRepo, onRemoveRepo, onColor, notify }: Props) {
   const [newName, setNewName] = useState('');
   const [newError, setNewError] = useState('');
   const dragId = useRef<string | null>(null);
@@ -111,7 +110,7 @@ export function Board({ board, onMove, onApply, onReorder, onToggleRepo, onOnlyR
   const tasksBy = (key: string) => board.tasks.filter((t) => t.column === key);
   const shownCount = board.tasks.length;
   const countText = `${shownCount} ${shownCount === 1 ? 'task' : 'tasks'}${shownCount !== board.totalTasks ? ` (de ${board.totalTasks})` : ''} · ${board.columns.length} ${board.columns.length === 1 ? 'coluna' : 'colunas'}`;
-  const visibleIds = board.repos.filter((r) => !board.hidden.includes(r.repoId)).map((r) => r.repoId);
+  const visibleIds = board.selected.length === 0 ? board.repos.map((r) => r.repoId) : board.selected;
   const unavailableRepos = board.repos.filter((r) => !r.available);
 
   return (
@@ -125,7 +124,7 @@ export function Board({ board, onMove, onApply, onReorder, onToggleRepo, onOnlyR
           {newError && <span className="error small" role="alert">{newError}</span>}
         </form>
       </header>
-      <RepoChips repos={board.repos} hidden={board.hidden} onToggle={onToggleRepo} onOnly={onOnlyRepo} onShowAll={onShowAll} onAdd={onAddRepo} onRemove={onRemoveRepo} onColor={onColor} />
+      <RepoChips repos={board.repos} selected={board.selected} onToggle={onToggleRepo} onShowAll={onShowAll} onAdd={onAddRepo} onRemove={onRemoveRepo} onColor={onColor} />
 
       {unavailableRepos.length > 0 && (
         <div className="banner danger" role="alert">

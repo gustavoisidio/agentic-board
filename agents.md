@@ -79,10 +79,10 @@ Todas sob `/api`, JSON, só em `127.0.0.1` (ou no IP da rede se o servidor subiu
 |---|---|
 | `POST /repos` `{ path }` | Abre mais um repositório (caminho absoluto); 409 se já aberto |
 | `DELETE /repos/:repoId` | Fecha o repo no board (nada muda em disco) |
-| `GET /board` | `{ repos[], tasks[], columns[], ignored[], hidden[] }` |
+| `GET /board` | `{ repos[], tasks[], columns[], ignored[], selected[] }` |
 | `GET /repos/:repoId/tasks/:id` | Conteúdo da task: `{ ...task, body, extra }` (o que o modal mostra) |
 | `PATCH /repos/:repoId/tasks/:id/status` `{ status }` | Move a task |
-| `PUT /repos/:repoId/color` · `PUT /filter` | Cor do repo e filtro padrão (de visualização) |
+| `PUT /repos/:repoId/color` · `PUT /filter` | Cor do repo e seleção padrão de repos (`{ selected: [repoId] }`, vazio = todos; só visualização) |
 | Rotas antigas | `POST /repo`, `DELETE /repo`, `GET /tasks/:id`, `PATCH /tasks/:id/status` seguem valendo com 1 repo (ou id único) |
 | `POST /columns` `{ name }` · `PATCH /columns/:key` · `DELETE /columns/:key` | Colunas |
 | `PATCH /columns/order` `{ order }` | Reordena colunas (nunca mexe nos `.md`; grava no `.board.json` com 1 repo ou no config do app com vários) |

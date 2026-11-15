@@ -29,7 +29,7 @@ export interface BoardState {
   tasks: BoardTask[];
   columns: Column[];
   ignored: (Ignored & { repoId: string })[];
-  hidden: string[]; // repoIds ocultos por padrão (filtro lembrado do conjunto)
+  selected: string[]; // repoIds selecionados por padrão (vazio = todos; lembrado por conjunto)
   configError?: string;
 }
 
@@ -82,7 +82,7 @@ export interface RepoData {
 }
 
 /** Monta o board de todos os repos abertos: uma coluna por status normalizado (ordem salva, depois as das tasks). */
-export function buildBoard(repos: RepoData[], config: BoardConfig, hidden: string[] = []): BoardState {
+export function buildBoard(repos: RepoData[], config: BoardConfig, selected: string[] = []): BoardState {
   const names = new Map<string, string>(); // key -> nome exibido (primeira ocorrência)
   for (const name of config.columns) {
     const key = statusKey(name);
@@ -113,7 +113,7 @@ export function buildBoard(repos: RepoData[], config: BoardConfig, hidden: strin
     tasks,
     columns: [...names].map(([key, name]) => ({ key, name, count: counts.get(key) ?? 0 })),
     ignored: repos.flatMap((r) => r.scan.ignored.map((i) => ({ ...i, repoId: r.info.repoId }))),
-    hidden,
+    selected,
     ...(config.error ? { configError: config.error } : {}),
   };
 }
