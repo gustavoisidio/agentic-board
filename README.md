@@ -21,6 +21,7 @@ npm run typecheck
 
 ## Uso
 
+0. Vários repositórios: depois do primeiro, use o chip **+** no topo. Cada repo ganha uma cor; clique num chip para selecionar só aquele repo, clique em outros para somar e no selecionado para tirar; sem seleção, todos aparecem (botão **Todos** limpa).
 1. Na tela inicial, **Escolher pasta** (Finder, só macOS) ou cole o caminho absoluto e **Abrir**. Os repositórios recentes ficam em `~/.agentic-board/config.json`.
 2. O board cria uma coluna por status; colunas criadas à mão e a ordem ficam em `specs/.board.json` do repo.
 3. Arraste os post-its entre colunas. Edições externas nos `.md` aparecem sozinhas (watcher + SSE).

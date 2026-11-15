@@ -8,7 +8,7 @@
 
 ## 2. Board
 
-**Topo:** nome/caminho do repo, contagem (`N tasks · M colunas`), botão "Trocar repositório…" e campo "+ Nova coluna".
+**Topo:** nome/caminho do repo, contagem (`N tasks · M colunas`), e campo "+ Nova coluna". Logo abaixo, a barra de chips dos repositórios (seção 13).
 
 **Aviso de ignorados:** faixa abaixo do topo, só se houver arquivos inválidos com frontmatter. Ex.: `1 arquivo ignorado: specs/tasks/rascunho.md — campo obrigatório ausente: status`. Expansível quando houver mais de um.
 
@@ -104,4 +104,17 @@ Vale para qualquer coluna, inclusive as que existem só por causa das tasks e as
 - **Continua funcional:** arrastar cards para dentro e para fora, reordenar a coluna, renomear e abrir o modal ao clicar no card.
 - **Destaque:** ao passar o mouse, focar dentro da coluna ou durante um arrasto sobre ela (card ou coluna como alvo), a opacidade sobe para `--done-opacity-active` (0,9).
 - **Dinâmico:** renomear a coluna para outro nome faz voltar ao normal; renomear outra coluna para "Concluído" passa a esmaecê-la. Vale também para coluna vazia.
+
+## 13. Vários repositórios
+
+- **Repos abertos:** o servidor mantém uma lista de repositórios, cada um com scanner, watcher e fila próprios (`~/.agentic-board/queues/<hash>.json` por repo). A lista e a cor de cada repo ficam em `~/.agentic-board/config.json` e são reabertas ao iniciar; um repo que sumiu aparece como chip "indisponível", sem derrubar os outros, e volta sozinho quando reaparece.
+- **Adicionar e remover:** o chip "+" no fim da barra abre o seletor (Finder ou caminho colado). Repo já aberto (mesmo caminho real) não duplica: avisa. O "✕" do chip remove só do board (nada muda em disco), sem confirmação. Remover o último volta à tela inicial. Com um único repo a tela é a de sempre, sem faixa colorida nem nome nos cards; os chips aparecem sempre.
+- **Identidade:** um card é `(repo, id)`. O mesmo `id` em repos diferentes é permitido e não gera aviso de duplicata (que continua valendo dentro do mesmo repo). O repo é identificado por um `repoId` (hash curto do caminho real). Nome curto: a pasta; se dois repos têm o mesmo nome, `app (pasta-pai)`.
+- **Colunas unificadas:** uma coluna por status normalizado, juntando os cards de todos os repos; o nome exibido é o da primeira ocorrência na ordem salva. Ordem e colunas vazias criadas à mão: com 1 repo, no `specs/.board.json` dele (como antes); com 2 ou mais, em `config.json`, por conjunto de repos (chave = hash dos caminhos reais ordenados), semeada pelos `.board.json` dos repos quando o conjunto é novo. No modo multi-repo nenhum `.board.json` é escrito.
+- **Mover:** grava o status só no `.md` daquele card (reescrita segura) e a fila daquele repo; o status de destino pode ainda não existir naquele repo (é só texto). **Renomear** reescreve todos os cards da coluna em todos os repos abertos; a confirmação traz a contagem por repo ("2 arquivos em app, 1 em api"). **Excluir** só se a coluna estiver vazia em todos os repos abertos (a seleção não conta).
+- **Cores:** paleta fixa de 8 cores sóbrias com versão clara e escura (`--repo-azul`, `teal`, `indigo`, `ambar`, `musgo`, `vinho`, `ardosia`, `cobre`). Cada repo novo recebe a primeira livre; a cor fica gravada e não muda ao reabrir. Para trocar, clique no ponto colorido do chip e escolha na paleta. A cor aparece como faixa lateral do card e ponto no chip; não é a única pista: o card mostra o nome curto do repo ao lado do id e o tooltip traz o caminho.
+- **Chips e seleção:** um chip por repo (ponto de cor, nome, contador, "✕"). Regra do filtro: (1) sem nenhum chip selecionado, o board mostra as tasks de **todos** os repos; (2) clicar num chip sem seleção seleciona só ele; (3) com seleção ativa, clicar noutro chip o soma e o board mostra a união; (4) clicar num chip selecionado o remove, e remover o último volta a mostrar todos; (5) o botão "Todos" (visível só com seleção) limpa a seleção. Visual: chips selecionados em cor cheia; com seleção ativa os não selecionados ficam apagados; sem seleção todos em estado normal. O topo mostra "N tasks (de M)" quando há seleção. A paleta de cores abre só pelo ponto colorido (não conflita com o clique de seleção). O filtro afeta só os cards: as colunas de todos os repos continuam existindo, mesmo vazias, e seus contadores refletem a seleção. Chips são botões com `aria-pressed` (true = selecionado); remover e trocar a cor funcionam por teclado. Não há mais "só este" nem duplo clique.
+- **Modal e arrasto:** o modal mostra o repo (chip pequeno) no cabeçalho; a troca de status usa a API com `repoId`. Reordenar colunas continua como na seção 11, agora gravando no config do conjunto.
+
+Decisões onde a spec original se contradizia: clicar no chip seleciona (não abre a paleta); a paleta abre pelo ponto de cor. As rotas antigas sem `repoId` continuam funcionando (ver `03-arquitetura.md`); `POST /repo` não substitui os repos abertos, apenas abre se ainda não estiver aberto.
 
